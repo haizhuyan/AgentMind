@@ -49,8 +49,25 @@ function buildModels() {
         label: process.env[`LLM${key}_LABEL`] || model,
         baseURL,
         apiKey,
-        model
+        model,
+        // 固定温度（可选）：某些模型只接受特定温度（如 kimi-k3 只允许 1）。
+        // 配置后将忽略各 Agent 传入的温度，强制使用此值。
+        fixedTemp:
+          process.env[`LLM${key}_TEMPERATURE`] !== undefined
+            ? Number(process.env[`LLM${key}_TEMPERATURE`])
+            : undefined
       })
+    }
+  }
+
+  // 主模型：由 LLM_PRIMARY 指定（填模型 id，如 llm4）。
+  // 主模型会排到列表首位，前端默认以它为主，负责清洗 / 洞察 / 报告。
+  const primaryId = process.env.LLM_PRIMARY
+  if (primaryId) {
+    const idx = models.findIndex((m) => m.id === primaryId)
+    if (idx > 0) {
+      const [primary] = models.splice(idx, 1)
+      models.unshift(primary)
     }
   }
   return models
@@ -166,7 +183,7 @@ app.post('/api/llm', async (req, res) => {
 
   const body = {
     model: m.model,
-    temperature: temperature ?? 0.7,
+    temperature: m.fixedTemp ?? temperature ?? 0.7,
     messages: [
       { role: 'system', content: system || '' },
       { role: 'user', content: user || '' }
@@ -236,7 +253,7 @@ app.post('/api/llm/stream', async (req, res) => {
 
   const body = {
     model: m.model,
-    temperature: temperature ?? 0.7,
+    temperature: m.fixedTemp ?? temperature ?? 0.7,
     stream: true,
     messages: [
       { role: 'system', content: system || '' },

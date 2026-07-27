@@ -28,16 +28,16 @@ app.use(express.json({ limit: '2mb' }))
 const PORT = process.env.PORT || process.env.SERVER_PORT || 3100
 
 // ---------- 配置 ----------
-// 多模型注册表：从环境变量收集 LLM_*, LLM2_*, LLM3_*, LLM4_* 四个槽位。
+// 多模型注册表：从环境变量收集 LLM_*, LLM2_*, LLM3_* ... 任意多个槽位。
 // 每个槽位需同时配置 *_BASE_URL / *_API_KEY / *_MODEL 才会启用。
 // *_LABEL 为界面展示名（可选）。
 function buildModels() {
-  const slots = [
-    { key: '', id: 'default' },
-    { key: '2', id: 'llm2' },
-    { key: '3', id: 'llm3' },
-    { key: '4', id: 'llm4' }
-  ]
+  // 槽位 1 用空后缀（LLM_*），其余用序号后缀（LLM2_*、LLM3_* …）。
+  const slots = [{ key: '', id: 'default' }]
+  for (let i = 2; i <= 12; i++) {
+    slots.push({ key: String(i), id: `llm${i}` })
+  }
+
   const models = []
   for (const { key, id } of slots) {
     const baseURL = process.env[`LLM${key}_BASE_URL`]

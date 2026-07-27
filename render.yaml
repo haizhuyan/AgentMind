@@ -1,0 +1,24 @@
+# Render 部署配置（Blueprint）
+# 在 Render 上选择 "New +" -> "Blueprint"，连接本仓库即可自动读取此文件。
+services:
+  - type: web
+    name: agentmind
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node server/index.js
+    envVars:
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: LLM_TIMEOUT
+        value: "100000"
+      - key: BOCHA_API_KEY
+        sync: false
+      - key: BOCHA_MODE
+        value: web
+      - key: BOCHA_BASE_URL
+        value: https://api.bochaai.com/v1/web-search

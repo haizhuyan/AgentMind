@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "description": "AI多智能体舆情分析系统 - 纯前端 Demo",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vite",
     "server": "node server/index.js",

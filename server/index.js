@@ -12,15 +12,20 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { bochaSearch, bochaWebSearch } from './bocha.js'
 
 dotenv.config()
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const app = express()
 app.use(cors())
 app.use(express.json({ limit: '2mb' }))
 
-const PORT = process.env.SERVER_PORT || 3100
+// 云平台（Render 等）通过 PORT 注入端口；本地回退到 SERVER_PORT。
+const PORT = process.env.PORT || process.env.SERVER_PORT || 3100
 
 // ---------- 配置 ----------
 const LLM = {
@@ -262,6 +267,17 @@ app.post('/api/llm/stream', async (req, res) => {
   } finally {
     clearTimeout(timer)
   }
+})
+
+// ---------- 生产环境：托管前端静态文件 ----------
+// 执行 `npm run build` 后，Vite 会输出到项目根目录的 dist/。
+// 后端直接托管这些文件，实现前后端合一部署（单个服务即可上线）。
+const distDir = path.resolve(__dirname, '..', 'dist')
+app.use(express.static(distDir))
+
+// SPA 兜底：非 /api 路由都返回 index.html，交给前端路由处理。
+app.get(/^(?!\/api).*/, (req, res) => {
+  res.sendFile(path.join(distDir, 'index.html'))
 })
 
 app.listen(PORT, () => {

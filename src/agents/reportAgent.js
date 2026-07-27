@@ -32,7 +32,7 @@ const SYSTEM_PROMPT = `你是一个专业的舆情报告撰写专家。请整合
  * @returns {Promise<string>} Markdown 报告
  */
 export async function reportAgent(ctx) {
-  const { keyword, cleaned, analyze, insight, trend, debate, sources, stream } = ctx
+  const { keyword, cleaned, analyze, insight, trend, debate, sources, stream, model } = ctx
 
   // 构造带编号的来源清单，供模型在报告中引用 [n]
   const sourceList = Array.isArray(sources) ? sources : []
@@ -58,6 +58,7 @@ ${sourceText}`
       system: SYSTEM_PROMPT,
       user,
       temperature: 0.6,
+      model: model?.id,
       onToken: stream.onToken,
       onReasoning: stream.onReasoning
     })
@@ -66,7 +67,8 @@ ${sourceText}`
   const content = await callLLM({
     system: SYSTEM_PROMPT,
     user,
-    temperature: 0.6
+    temperature: 0.6,
+    model: model?.id
   })
 
   return content

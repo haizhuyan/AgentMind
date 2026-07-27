@@ -22,9 +22,10 @@ const SYSTEM_PROMPT = `你是一个资深舆情洞察顾问。基于给定的舆
 /**
  * @param {Object} analyzeResult 分析 Agent 的输出
  * @param {string} keyword 舆情关键词
+ * @param {{id?:string}} [model] 执行洞察的主模型
  * @returns {Promise<{trend:string, risks:Array, demands:Array, cause:string}>}
  */
-export async function insightAgent(analyzeResult, keyword) {
+export async function insightAgent(analyzeResult, keyword, model) {
   const user = `舆情关键词：${keyword}\n分析结果（JSON）：\n${JSON.stringify(
     analyzeResult,
     null,
@@ -35,7 +36,8 @@ export async function insightAgent(analyzeResult, keyword) {
     system: SYSTEM_PROMPT,
     user,
     json: true,
-    temperature: 0.5
+    temperature: 0.5,
+    model: model?.id
   })
 
   const data = parseJSON(content)

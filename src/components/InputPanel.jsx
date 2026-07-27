@@ -8,7 +8,15 @@ import { parseNaturalLanguage } from '../utils/nlpParser.js'
  *   natural —— 一句话自然语言需求（自动解析）
  *   paste   —— 直接粘贴舆情文本（不依赖任何搜索 API）
  */
-export default function InputPanel({ loading, onAnalyze, onReset, hasResult }) {
+export default function InputPanel({
+  loading,
+  onAnalyze,
+  onReset,
+  hasResult,
+  models = [],
+  selectedIds = [],
+  onToggleModel
+}) {
   const [mode, setMode] = useState('keyword')
   const [value, setValue] = useState('')
   const [pasteText, setPasteText] = useState('')
@@ -84,6 +92,37 @@ export default function InputPanel({ loading, onAnalyze, onReset, hasResult }) {
 
   return (
     <section className="card input-panel">
+      {models.length > 0 && (
+        <div className="model-selector">
+          <span className="model-selector-label">参与协作的模型</span>
+          <div className="model-chips">
+            {models.map((m) => {
+              const active = selectedIds.includes(m.id)
+              const isPrimary = active && selectedIds[0] === m.id
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`model-chip ${active ? 'active' : ''}`}
+                  onClick={() => onToggleModel?.(m.id)}
+                  disabled={loading}
+                  title={m.model}
+                >
+                  <span className="model-chip-check">{active ? '✓' : ''}</span>
+                  {m.label}
+                  {isPrimary && <span className="model-chip-tag">主</span>}
+                </button>
+              )
+            })}
+          </div>
+          {selectedIds.length > 1 && (
+            <p className="model-selector-hint">
+              分析阶段 {selectedIds.length} 个模型并行集成，验证阶段跨模型交叉复核；主模型负责清洗・洞察・报告。
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="input-mode-switch">
         <button
           className={mode === 'keyword' ? 'mode-btn active' : 'mode-btn'}

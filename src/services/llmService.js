@@ -15,13 +15,14 @@ import { API_BASE } from '../config.js'
  * @param {string} params.user     用户内容（待处理的数据）
  * @param {boolean} [params.json]  是否要求返回 JSON 格式
  * @param {number} [params.temperature] 采样温度
+ * @param {string} [params.model]  模型 id（多模型时指定由哪个模型执行；缺省用后端默认）
  * @returns {Promise<string>} 模型返回的文本内容
  */
-export async function callLLM({ system, user, json = false, temperature }) {
+export async function callLLM({ system, user, json = false, temperature, model }) {
   try {
     const res = await axios.post(
       `${API_BASE}/llm`,
-      { system, user, json, temperature },
+      { system, user, json, temperature, model },
       { timeout: 120000, headers: { 'Content-Type': 'application/json' } }
     )
 
@@ -51,13 +52,14 @@ export async function callLLM({ system, user, json = false, temperature }) {
  * @param {number} [params.temperature]
  * @param {(text:string)=>void} [params.onToken]     正文 token 回调
  * @param {(text:string)=>void} [params.onReasoning] 思考链（deepseek-reasoner）回调
+ * @param {string} [params.model] 模型 id
  * @returns {Promise<string>} 完整正文
  */
-export async function callLLMStream({ system, user, temperature, onToken, onReasoning }) {
+export async function callLLMStream({ system, user, temperature, onToken, onReasoning, model }) {
   const res = await fetch(`${API_BASE}/llm/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ system, user, temperature })
+    body: JSON.stringify({ system, user, temperature, model })
   })
 
   if (!res.ok || !res.body) {
@@ -141,5 +143,19 @@ export function parseJSON(text) {
       }
     }
     throw new Error('数据解析异常，请重试')
+  }
+}
+
+/**
+ * 获取后端已配置的可用模型列表（用于前端"参与协作的模型"选择器）。
+ * @returns {Promise<Array<{id:string, label:string, model:string}>>}
+ */
+export async function fetchModels() {
+  try {
+    const res = await axios.get(`${API_BASE}/models`, { timeout: 8000 })
+    const models = res?.data?.models
+    return Array.isArray(models) ? models : []
+  } catch {
+    return []
   }
 }

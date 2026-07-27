@@ -29,6 +29,10 @@ export const AGENT_STEPS = [
  * @param {Object} params
  * @param {string} params.keyword 舆情关键词
  * @param {string} [params.rawText] 用户直接粘贴的舆情文本（提供则跳过联网采集）
+ * @param {Array<{id:string, label:string}>} [params.models] 参与协作的模型列表。
+ *        - 第一个为「主模型」，负责清洗、洞察、报告；
+ *        - 全部模型参与「分析」阶段（并行集成）；
+ *        - 验证阶段优先用非主模型做跨模型交叉复核（仅一个模型时自评）。
  * @param {(stepId:string, status:string, detail?:Object)=>void} params.onStep 步骤回调
  *        status: running | done | failed | skipped
  *        detail: 该步骤的中间产物（供 UI 展开查看）
@@ -36,8 +40,14 @@ export const AGENT_STEPS = [
  *        evt: 'token' | 'reasoning'
  * @returns {Promise<Object>} 完整分析结果
  */
-export async function runAgentFlow({ keyword, rawText, onStep, onReport }) {
+export async function runAgentFlow({ keyword, rawText, models, onStep, onReport }) {
   const report = onStep || (() => {})
+
+  // ---- 模型角色分配 ----
+  const selected = Array.isArray(models) && models.length ? models : [undefined]
+  const primary = selected[0] // 主模型：清洗 / 洞察 / 报告
+  // 验证模型：优先取非主模型（跨模型交叉验证）；仅一个模型时退化为自评
+  const validators = selected.length > 1 ? selected.slice(1) : selected
 
   // ---- 1. 采集 ----
   report('collect', 'running')
@@ -68,25 +78,26 @@ export async function runAgentFlow({ keyword, rawText, onStep, onReport }) {
 
   // ---- 2. 清洗 ----
   report('clean', 'running')
-  const cleaned = await cleanAgent(raw)
+  const cleaned = await cleanAgent(raw, primary)
   report('clean', 'done', {
     before: raw.length,
     after: cleaned.length,
     samples: cleaned.slice(0, 6)
   })
 
-  // ---- 3. 分析 ----
+  // ---- 3. 分析（多模型协作：全部选中模型并行独立分析后集成）----
   report('analyze', 'running')
-  const analyze = await analyzeAgent(cleaned)
+  const analyze = await analyzeAgent(cleaned, selected)
   report('analyze', 'done', {
     sentiment: analyze.sentiment,
     keywords: (analyze.keywords || []).slice(0, 10),
-    opinions: analyze.opinions || []
+    opinions: analyze.opinions || [],
+    contributors: analyze.contributors || []
   })
 
   // ---- 4. 洞察 ----
   report('insight', 'running')
-  const insight = await insightAgent(analyze, keyword)
+  const insight = await insightAgent(analyze, keyword, primary)
   report('insight', 'done', {
     trend: insight.trend,
     risks: insight.risks || [],
@@ -94,11 +105,11 @@ export async function runAgentFlow({ keyword, rawText, onStep, onReport }) {
     cause: insight.cause
   })
 
-  // ---- 5. 交叉验证 / 辩论（可选）----
+  // ---- 5. 交叉验证 / 辩论（多模型协作：非主模型独立复核）----
   let debate = null
   if (ENABLE_DEBATE) {
     report('debate', 'running')
-    debate = await debateService({ keyword, analyze, insight })
+    debate = await debateService({ keyword, analyze, insight, validators })
     // 若校准后有更新，采用校准情感占比
     if (debate.calibratedSentiment) {
       analyze.sentiment = debate.calibratedSentiment
@@ -108,6 +119,7 @@ export async function runAgentFlow({ keyword, rawText, onStep, onReport }) {
       hasDivergence: debate.hasDivergence,
       disputes: debate.disputes || [],
       supplement: debate.supplement || [],
+      reviewers: debate.reviewers || [],
       trace: debate.trace
     })
   } else {
@@ -127,6 +139,7 @@ export async function runAgentFlow({ keyword, rawText, onStep, onReport }) {
     trend,
     debate,
     sources,
+    model: primary,
     stream: onReport
       ? {
           onToken: (t) => onReport('token', t),

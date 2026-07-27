@@ -4,6 +4,7 @@ import AgentFlow from './components/AgentFlow.jsx'
 import ChartPanel from './components/ChartPanel.jsx'
 import ReportPanel from './components/ReportPanel.jsx'
 import { runAgentFlow } from './services/agentOrchestrator.js'
+import { fetchModels } from './services/llmService.js'
 import './App.css'
 
 export default function App() {
@@ -14,7 +15,30 @@ export default function App() {
   const [streamReport, setStreamReport] = useState('')
   const [thinking, setThinking] = useState('')
 
+  // 多模型协作：可用模型列表 + 用户选中参与协作的模型 id
+  const [models, setModels] = useState([])
+  const [selectedIds, setSelectedIds] = useState([])
+
   const chartRef = useRef(null)
+
+  // 启动时拉取后端已配置的模型，默认全选（全部参与协作）
+  useEffect(() => {
+    fetchModels().then((list) => {
+      setModels(list)
+      setSelectedIds(list.map((m) => m.id))
+    })
+  }, [])
+
+  function toggleModel(id) {
+    setSelectedIds((prev) => {
+      // 至少保留一个模型
+      if (prev.includes(id)) {
+        return prev.length > 1 ? prev.filter((x) => x !== id) : prev
+      }
+      // 保持与 models 同顺序（第一个选中的为主模型）
+      return models.map((m) => m.id).filter((x) => prev.includes(x) || x === id)
+    })
+  }
 
   // 分析完成后自动滚动到图表区
   useEffect(() => {
@@ -37,9 +61,11 @@ export default function App() {
     setError('')
 
     try {
+      const chosen = models.filter((m) => selectedIds.includes(m.id))
       const data = await runAgentFlow({
         keyword,
         rawText,
+        models: chosen,
         onStep: (stepId, status, detail) => {
           setStatuses((prev) => ({
             ...prev,
@@ -88,6 +114,9 @@ export default function App() {
           onAnalyze={handleAnalyze}
           onReset={reset}
           hasResult={!!result}
+          models={models}
+          selectedIds={selectedIds}
+          onToggleModel={toggleModel}
         />
 
         {error && (

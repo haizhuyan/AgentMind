@@ -18,16 +18,18 @@ const SYSTEM_PROMPT = `你是一个舆情数据清洗专家。请对给定的舆
 
 /**
  * @param {string[]} rawList 原始文本列表
+ * @param {{id?:string}} [model] 执行清洗的主模型
  * @returns {Promise<string[]>} 清洗后的文本列表
  */
-export async function cleanAgent(rawList) {
+export async function cleanAgent(rawList, model) {
   const user = `原始舆情文本列表（JSON 数组）：\n${JSON.stringify(rawList, null, 2)}`
 
   const content = await callLLM({
     system: SYSTEM_PROMPT,
     user,
     json: true,
-    temperature: 0.2
+    temperature: 0.2,
+    model: model?.id
   })
 
   const data = parseJSON(content)

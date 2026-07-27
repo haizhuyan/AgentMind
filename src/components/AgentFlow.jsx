@@ -157,7 +157,17 @@ function renderDetail(stepId, d) {
     case 'analyze':
       return (
         <>
-          <div className="detail-tag">情感占比</div>
+          {d.contributors?.length > 0 && (
+            <div className="detail-tag">
+              多模型协作分析：
+              {d.contributors.map((c, i) => (
+                <span key={i} className={`model-badge ${c.ok ? '' : 'model-badge-fail'}`}>
+                  {c.ok ? '✓' : '✕'} {c.label}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="detail-tag">情感占比{d.contributors?.length > 1 ? '（多模型集成）' : ''}</div>
           <div className="sentiment-bars">
             <SentiBar label="正面" val={d.sentiment?.positive} color="#22c55e" />
             <SentiBar label="负面" val={d.sentiment?.negative} color="#ef4444" />
@@ -215,9 +225,19 @@ function renderDetail(stepId, d) {
       return (
         <>
           <div className="detail-tag">
-            验证 Agent 一致度 <b>{d.agreement}%</b>
+            多模型交叉验证，平均一致度 <b>{d.agreement}%</b>
             {d.hasDivergence ? '（存在分歧，已二次校准）' : '（结论高度一致）'}
           </div>
+          {d.reviewers?.length > 0 && (
+            <div className="detail-tag">
+              参与复核：
+              {d.reviewers.map((r, i) => (
+                <span key={i} className={`model-badge ${r.ok ? '' : 'model-badge-fail'}`}>
+                  {r.ok ? `✓ ${r.label}（${r.agreement}%）` : `✕ ${r.label}`}
+                </span>
+              ))}
+            </div>
+          )}
           {d.disputes?.length > 0 && (
             <div className="detail-block">
               <span className="block-label risk">分歧点</span>

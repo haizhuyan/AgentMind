@@ -28,12 +28,46 @@ app.use(express.json({ limit: '2mb' }))
 const PORT = process.env.PORT || process.env.SERVER_PORT || 3100
 
 // ---------- 配置 ----------
-const LLM = {
-  baseURL: process.env.LLM_BASE_URL,
-  apiKey: process.env.LLM_API_KEY,
-  model: process.env.LLM_MODEL,
-  timeout: Number(process.env.LLM_TIMEOUT || 100000)
+// 多模型注册表：从环境变量收集 LLM_*, LLM2_*, LLM3_*, LLM4_* 四个槽位。
+// 每个槽位需同时配置 *_BASE_URL / *_API_KEY / *_MODEL 才会启用。
+// *_LABEL 为界面展示名（可选）。
+function buildModels() {
+  const slots = [
+    { key: '', id: 'default' },
+    { key: '2', id: 'llm2' },
+    { key: '3', id: 'llm3' },
+    { key: '4', id: 'llm4' }
+  ]
+  const models = []
+  for (const { key, id } of slots) {
+    const baseURL = process.env[`LLM${key}_BASE_URL`]
+    const apiKey = process.env[`LLM${key}_API_KEY`]
+    const model = process.env[`LLM${key}_MODEL`]
+    if (baseURL && apiKey && model) {
+      models.push({
+        id,
+        label: process.env[`LLM${key}_LABEL`] || model,
+        baseURL,
+        apiKey,
+        model
+      })
+    }
+  }
+  return models
 }
+
+const MODELS = buildModels()
+const LLM_TIMEOUT = Number(process.env.LLM_TIMEOUT || 100000)
+
+// 按 id 解析模型配置；未指定或找不到时回退到第一个可用模型。
+function resolveModel(id) {
+  if (id) {
+    const found = MODELS.find((m) => m.id === id)
+    if (found) return found
+  }
+  return MODELS[0]
+}
+
 const BOCHA = {
   apiKey: process.env.BOCHA_API_KEY,
   baseURL: process.env.BOCHA_BASE_URL || 'https://api.bochaai.com/v1/web-search',
@@ -54,8 +88,17 @@ function stripHtml(str = '') {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    llm: Boolean(LLM.apiKey && LLM.baseURL && LLM.model),
+    llm: MODELS.length > 0,
+    models: MODELS.length,
     bocha: Boolean(BOCHA.apiKey)
+  })
+})
+
+// ---------- 可用模型列表 ----------
+// 前端据此渲染"参与协作的模型"选择器（仅暴露 id/label/model，不含密钥）。
+app.get('/api/models', (req, res) => {
+  res.json({
+    models: MODELS.map((m) => ({ id: m.id, label: m.label, model: m.model }))
   })
 })
 
@@ -112,16 +155,17 @@ app.post('/api/collect', async (req, res) => {
 
 // ---------- LLM 代理 ----------
 app.post('/api/llm', async (req, res) => {
-  const { system, user, json = false, temperature } = req.body || {}
+  const { system, user, json = false, temperature, model: modelId } = req.body || {}
 
-  if (!LLM.apiKey || !LLM.baseURL || !LLM.model) {
+  const m = resolveModel(modelId)
+  if (!m) {
     return res
       .status(500)
-      .json({ error: '服务端未配置 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL。' })
+      .json({ error: '服务端未配置任何 LLM（请检查 .env 的 LLM_*）。' })
   }
 
   const body = {
-    model: LLM.model,
+    model: m.model,
     temperature: temperature ?? 0.7,
     messages: [
       { role: 'system', content: system || '' },
@@ -131,14 +175,14 @@ app.post('/api/llm', async (req, res) => {
   if (json) body.response_format = { type: 'json_object' }
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), LLM.timeout)
+  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT)
 
   try {
-    const r = await fetch(LLM.baseURL, {
+    const r = await fetch(m.baseURL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${LLM.apiKey}`
+        Authorization: `Bearer ${m.apiKey}`
       },
       body: JSON.stringify(body),
       signal: controller.signal
@@ -156,10 +200,10 @@ app.post('/api/llm', async (req, res) => {
     if (!content) {
       return res.status(502).json({ error: 'LLM 返回内容为空' })
     }
-    res.json({ content: content.trim() })
+    res.json({ content: content.trim(), model: m.id, label: m.label })
   } catch (err) {
     if (err.name === 'AbortError') {
-      return res.status(504).json({ error: `LLM 调用超时（>${LLM.timeout / 1000}s）` })
+      return res.status(504).json({ error: `LLM 调用超时（>${LLM_TIMEOUT / 1000}s）` })
     }
     res.status(502).json({ error: `LLM 调用异常：${err.message}` })
   } finally {
@@ -171,12 +215,13 @@ app.post('/api/llm', async (req, res) => {
 // 实时转发大模型的 token 流，供前端展示"思考/撰写"过程。
 // 支持 deepseek-reasoner 的 reasoning_content（思考链）。
 app.post('/api/llm/stream', async (req, res) => {
-  const { system, user, temperature } = req.body || {}
+  const { system, user, temperature, model: modelId } = req.body || {}
 
-  if (!LLM.apiKey || !LLM.baseURL || !LLM.model) {
+  const m = resolveModel(modelId)
+  if (!m) {
     return res
       .status(500)
-      .json({ error: '服务端未配置 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL。' })
+      .json({ error: '服务端未配置任何 LLM（请检查 .env 的 LLM_*）。' })
   }
 
   // 建立 SSE 连接
@@ -190,7 +235,7 @@ app.post('/api/llm/stream', async (req, res) => {
   }
 
   const body = {
-    model: LLM.model,
+    model: m.model,
     temperature: temperature ?? 0.7,
     stream: true,
     messages: [
@@ -200,14 +245,14 @@ app.post('/api/llm/stream', async (req, res) => {
   }
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), LLM.timeout)
+  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT)
 
   try {
-    const r = await fetch(LLM.baseURL, {
+    const r = await fetch(m.baseURL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${LLM.apiKey}`
+        Authorization: `Bearer ${m.apiKey}`
       },
       body: JSON.stringify(body),
       signal: controller.signal
@@ -260,7 +305,7 @@ app.post('/api/llm/stream', async (req, res) => {
   } catch (err) {
     const msg =
       err.name === 'AbortError'
-        ? `LLM 调用超时（>${LLM.timeout / 1000}s）`
+        ? `LLM 调用超时（>${LLM_TIMEOUT / 1000}s）`
         : `LLM 调用异常：${err.message}`
     send('error', { error: msg })
     res.end()
@@ -282,6 +327,6 @@ app.get(/^(?!\/api).*/, (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`\n🐟 AgentMind 后端已启动: http://localhost:${PORT}`)
-  console.log(`   LLM   配置: ${LLM.apiKey ? '✓' : '✗ 缺失'}`)
+  console.log(`   LLM   配置: ${MODELS.length ? `✓ ${MODELS.length} 个模型（${MODELS.map((m) => m.label).join('、')}）` : '✗ 缺失'}`)
   console.log(`   Bocha 配置: ${BOCHA.apiKey ? '✓' : '✗ 缺失'}\n`)
 })

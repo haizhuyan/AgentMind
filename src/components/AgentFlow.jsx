@@ -107,6 +107,34 @@ export default function AgentFlow({ statuses = {}, loading }) {
 
 /** 根据步骤类型渲染对应的中间产物视图 */
 function renderDetail(stepId, d) {
+  // 运行中：展示"处理中"提示与正在协作的模型（真实产物需等该步骤完成）
+  if (d && d._running) {
+    const list = d.models || (d.reviewers?.length ? d.reviewers : d.model ? [d.model] : [])
+    return (
+      <div className="detail-running">
+        <span className="detail-running-dot" />
+        <span>
+          {stepId === 'analyze'
+            ? '多模型并行分析中…'
+            : stepId === 'debate'
+              ? '跨模型交叉复核中…'
+              : stepId === 'report'
+                ? '撰写报告中…'
+                : '处理中…'}
+        </span>
+        {list.length > 0 && (
+          <span className="detail-running-models">
+            {list.map((label, i) => (
+              <span key={i} className="model-badge">
+                {label}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+    )
+  }
+
   switch (stepId) {
     case 'collect':
       return (

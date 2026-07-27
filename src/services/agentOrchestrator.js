@@ -49,6 +49,9 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
   // 验证模型：优先取非主模型（跨模型交叉验证）；仅一个模型时退化为自评
   const validators = selected.length > 1 ? selected.slice(1) : selected
 
+  // 取模型展示名（用于运行中实时展示"正在协作的模型"）
+  const labelOf = (m) => m?.label || '默认模型'
+
   // ---- 1. 采集 ----
   report('collect', 'running')
   let raw
@@ -77,7 +80,7 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
   }
 
   // ---- 2. 清洗 ----
-  report('clean', 'running')
+  report('clean', 'running', { _running: true, model: labelOf(primary), before: raw.length })
   const cleaned = await cleanAgent(raw, primary)
   report('clean', 'done', {
     before: raw.length,
@@ -86,7 +89,7 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
   })
 
   // ---- 3. 分析（多模型协作：全部选中模型并行独立分析后集成）----
-  report('analyze', 'running')
+  report('analyze', 'running', { _running: true, models: selected.map(labelOf) })
   const analyze = await analyzeAgent(cleaned, selected)
   report('analyze', 'done', {
     sentiment: analyze.sentiment,
@@ -96,7 +99,7 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
   })
 
   // ---- 4. 洞察 ----
-  report('insight', 'running')
+  report('insight', 'running', { _running: true, model: labelOf(primary) })
   const insight = await insightAgent(analyze, keyword, primary)
   report('insight', 'done', {
     trend: insight.trend,
@@ -108,7 +111,7 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
   // ---- 5. 交叉验证 / 辩论（多模型协作：非主模型独立复核）----
   let debate = null
   if (ENABLE_DEBATE) {
-    report('debate', 'running')
+    report('debate', 'running', { _running: true, reviewers: validators.map(labelOf) })
     debate = await debateService({ keyword, analyze, insight, validators })
     // 若校准后有更新，采用校准情感占比
     if (debate.calibratedSentiment) {
@@ -130,7 +133,7 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
   const trend = trendPredict({ analyze, insight })
 
   // ---- 6. 报告（流式生成，实时展示 DeepSeek 撰写/思考过程）----
-  report('report', 'running')
+  report('report', 'running', { _running: true, model: labelOf(primary) })
   const reportText = await reportAgent({
     keyword,
     cleaned,

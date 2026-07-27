@@ -166,6 +166,26 @@
   color: #ef4444;
   border-color: rgba(239, 68, 68, 0.3);
 }
+.detail-running {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.detail-running-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.4s infinite;
+}
+.detail-running-models {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 
 .input-mode-switch {
   display: flex;

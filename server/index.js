@@ -15,6 +15,8 @@ import dotenv from 'dotenv'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { bochaSearch, bochaWebSearch } from './bocha.js'
+import { anspireSearch } from './anspire.js'
+import { fetchHotList } from './hotlist.js'
 
 dotenv.config()
 
@@ -92,6 +94,21 @@ const BOCHA = {
   mode: (process.env.BOCHA_MODE || 'web').toLowerCase()
 }
 
+// Anspire 安思派 AI 搜索（第二数据源，缓解单一搜索源问题）
+const ANSPIRE = {
+  apiKey: process.env.ANSPIRE_API_KEY,
+  baseURL: process.env.ANSPIRE_BASE_URL || 'https://plugin.anspire.cn/api/ntsearch/search',
+  // 检索区域：0 国内 / 1 海外 / 2 混合
+  regionMode: Number(process.env.ANSPIRE_REGION_MODE || 0)
+}
+
+// 天行数据全网热搜榜
+const TIANAPI = {
+  key: process.env.TIANAPI_KEY,
+  hotlistURL:
+    process.env.TIANAPI_HOTLIST_URL || 'https://apis.tianapi.com/networkhot/index'
+}
+
 // 去除 HTML 标签与多余空白
 function stripHtml(str = '') {
   return String(str)
@@ -107,7 +124,9 @@ app.get('/api/health', (req, res) => {
     ok: true,
     llm: MODELS.length > 0,
     models: MODELS.length,
-    bocha: Boolean(BOCHA.apiKey)
+    bocha: Boolean(BOCHA.apiKey),
+    anspire: Boolean(ANSPIRE.apiKey),
+    hotlist: Boolean(TIANAPI.key)
   })
 })
 
@@ -119,7 +138,9 @@ app.get('/api/models', (req, res) => {
   })
 })
 
-// ---------- 舆情采集：Bocha AI 搜索 ----------
+// ---------- 舆情采集：多源聚合（Bocha + Anspire）----------
+// 同时调用已配置的搜索源，合并去重后返回，缓解「单一搜索源」问题。
+// 任一源失败不影响其余源（Promise.allSettled）。
 app.post('/api/collect', async (req, res) => {
   const { keyword, limit = 15, freshness = 'noLimit' } = req.body || {}
   const kw = String(keyword || '').trim()
@@ -127,46 +148,112 @@ app.post('/api/collect', async (req, res) => {
     return res.status(400).json({ error: '缺少 keyword 参数' })
   }
 
-  try {
-    const searchFn = BOCHA.mode === 'ai' ? bochaSearch : bochaWebSearch
-    const { webpages, answer } = await searchFn({
-      apiKey: BOCHA.apiKey,
-      baseURL: BOCHA.baseURL,
-      query: `${kw} 舆情 评价 讨论`,
-      count: Math.min(Number(limit) || 15, 30),
-      answer: false,
-      freshness
-    })
+  const count = Math.min(Number(limit) || 15, 30)
+  const query = `${kw} 舆情 评价 讨论`
 
-    // 组织成舆情文本 + 来源列表
+  // 组装可用搜索源任务
+  const tasks = []
+  if (BOCHA.apiKey) {
+    const searchFn = BOCHA.mode === 'ai' ? bochaSearch : bochaWebSearch
+    tasks.push({
+      provider: 'bocha',
+      run: () =>
+        searchFn({
+          apiKey: BOCHA.apiKey,
+          baseURL: BOCHA.baseURL,
+          query,
+          count,
+          answer: false,
+          freshness
+        })
+    })
+  }
+  if (ANSPIRE.apiKey) {
+    tasks.push({
+      provider: 'anspire',
+      run: () =>
+        anspireSearch({
+          apiKey: ANSPIRE.apiKey,
+          baseURL: ANSPIRE.baseURL,
+          query,
+          count,
+          regionMode: ANSPIRE.regionMode
+        })
+    })
+  }
+
+  if (tasks.length === 0) {
+    return res.status(500).json({
+      error: '服务端未配置任何搜索源（请在 .env 填写 BOCHA_API_KEY 或 ANSPIRE_API_KEY）。'
+    })
+  }
+
+  try {
+    const settled = await Promise.allSettled(tasks.map((t) => t.run()))
+
     const items = []
     const sources = []
     const seen = new Set()
+    const providerStats = []
+    let aiSummary = ''
+    const errors = []
 
-    for (const w of webpages) {
-      const title = stripHtml(w.name)
-      const snippet = stripHtml(w.snippet)
-      const text = snippet ? `${title}。${snippet}` : title
-      if (!text || seen.has(text)) continue
-      seen.add(text)
-      items.push(text)
-      sources.push({
-        title,
-        url: w.url,
-        displayUrl: w.displayUrl,
-        date: w.datePublished
-      })
-    }
+    settled.forEach((s, i) => {
+      const provider = tasks[i].provider
+      if (s.status === 'fulfilled') {
+        const { webpages = [], answer } = s.value || {}
+        if (answer && !aiSummary) aiSummary = answer
+        let added = 0
+        for (const w of webpages) {
+          const title = stripHtml(w.name)
+          const snippet = stripHtml(w.snippet)
+          const text = snippet ? `${title}。${snippet}` : title
+          // 去重：按正文文本 + URL 双重判断
+          const dedupeKey = `${text}|${w.url || ''}`
+          if (!text || seen.has(dedupeKey)) continue
+          seen.add(dedupeKey)
+          items.push(text)
+          sources.push({
+            title,
+            url: w.url,
+            displayUrl: w.displayUrl,
+            date: w.datePublished,
+            provider
+          })
+          added++
+        }
+        providerStats.push({ provider, ok: true, count: added })
+      } else {
+        errors.push(`${provider}: ${s.reason?.message || '采集失败'}`)
+        providerStats.push({ provider, ok: false, error: s.reason?.message })
+      }
+    })
 
     if (items.length === 0) {
+      const detail = errors.length ? `（${errors.join('；')}）` : ''
       return res.status(404).json({
-        error: `Bocha 未检索到「${kw}」的相关舆情，请更换关键词或稍后重试。`
+        error: `未检索到「${kw}」的相关舆情，请更换关键词或稍后重试。${detail}`
       })
     }
 
-    res.json({ texts: items, sources, aiSummary: answer })
+    res.json({ texts: items, sources, aiSummary, providers: providerStats })
   } catch (err) {
-    res.status(502).json({ error: err.message || 'Bocha 采集失败' })
+    res.status(502).json({ error: err.message || '舆情采集失败' })
+  }
+})
+
+// ---------- 全网热搜榜（天行数据）----------
+app.get('/api/hotlist', async (req, res) => {
+  if (!TIANAPI.key) {
+    return res
+      .status(500)
+      .json({ error: '服务端未配置 TIANAPI_KEY（请在 .env 填写天行数据密钥）。' })
+  }
+  try {
+    const list = await fetchHotList({ apiKey: TIANAPI.key, baseURL: TIANAPI.hotlistURL })
+    res.json({ list })
+  } catch (err) {
+    res.status(502).json({ error: err.message || '热搜榜获取失败' })
   }
 })
 
@@ -345,5 +432,7 @@ app.get(/^(?!\/api).*/, (req, res) => {
 app.listen(PORT, () => {
   console.log(`\n🐟 AgentMind 后端已启动: http://localhost:${PORT}`)
   console.log(`   LLM   配置: ${MODELS.length ? `✓ ${MODELS.length} 个模型（${MODELS.map((m) => m.label).join('、')}）` : '✗ 缺失'}`)
-  console.log(`   Bocha 配置: ${BOCHA.apiKey ? '✓' : '✗ 缺失'}\n`)
+  console.log(`   Bocha 配置: ${BOCHA.apiKey ? '✓' : '✗ 缺失'}`)
+  console.log(`   Anspire 配置: ${ANSPIRE.apiKey ? '✓' : '✗ 缺失'}`)
+  console.log(`   热搜  配置: ${TIANAPI.key ? '✓' : '✗ 缺失'}\n`)
 })

@@ -3,6 +3,7 @@ import InputPanel from './components/InputPanel.jsx'
 import AgentFlow from './components/AgentFlow.jsx'
 import ChartPanel from './components/ChartPanel.jsx'
 import ReportPanel from './components/ReportPanel.jsx'
+import HotList from './components/HotList.jsx'
 import { runAgentFlow } from './services/agentOrchestrator.js'
 import { fetchModels } from './services/llmService.js'
 import './App.css'
@@ -59,7 +60,6 @@ export default function App() {
     reset()
     setLoading(true)
     setError('')
-
     try {
       const chosen = models.filter((m) => selectedIds.includes(m.id))
       const data = await runAgentFlow({
@@ -117,6 +117,11 @@ export default function App() {
           models={models}
           selectedIds={selectedIds}
           onToggleModel={toggleModel}
+        />
+
+        <HotList
+          onPick={(keyword) => handleAnalyze({ keyword })}
+          disabled={loading}
         />
 
         {error && (

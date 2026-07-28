@@ -1,4 +1,6 @@
 import { callLLM, parseJSON } from '../services/llmService.js'
+import { analyzeLocalSentiment, fuseSentiment } from '../utils/localSentiment.js'
+import { LOCAL_SENTIMENT_CONFIG } from '../config.js'
 
 /**
  * 分析 Agent
@@ -127,5 +129,24 @@ export async function analyzeAgent(cleanedList, models) {
   }
 
   const merged = ensembleAnalyze(results)
-  return { ...merged, contributors }
+
+  // 本地情感中间件：以中文情感词典对文本做一次本地分析，作为校准锚点与 LLM 结果融合。
+  let localSentiment = null
+  if (LOCAL_SENTIMENT_CONFIG.enabled) {
+    const local = analyzeLocalSentiment(cleanedList)
+    localSentiment = { ...local, weight: LOCAL_SENTIMENT_CONFIG.weight }
+    const llmSentiment = merged.sentiment
+    merged.sentiment = fuseSentiment(llmSentiment, local, LOCAL_SENTIMENT_CONFIG.weight)
+    // 作为一个「贡献者」展示（区别于大模型：kind = 'local'）
+    contributors.push({
+      label: '本地情感词典',
+      sentiment: local.sentiment,
+      coverage: local.coverage,
+      analyzed: local.analyzed,
+      kind: 'local',
+      ok: true
+    })
+  }
+
+  return { ...merged, contributors, localSentiment }
 }

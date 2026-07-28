@@ -4,8 +4,11 @@ import { analyzeAgent } from '../agents/analyzeAgent.js'
 import { insightAgent } from '../agents/insightAgent.js'
 import { reportAgent } from '../agents/reportAgent.js'
 import { debateService } from '../agents/debateService.js'
+import { forumService } from '../agents/forumService.js'
 import { trendPredict } from '../utils/trendPredict.js'
-import { ENABLE_DEBATE } from '../config.js'
+import { ENABLE_DEBATE, FORUM_CONFIG } from '../config.js'
+import { getTemplate, DEFAULT_TEMPLATE_ID } from '../report/templates.js'
+import { markdownToIR } from '../report/ir.js'
 
 /**
  * agentOrchestrator.js —— 多智能体调度器
@@ -20,7 +23,7 @@ export const AGENT_STEPS = [
   { id: 'clean', name: '清洗 Agent', desc: '去重、过滤广告与无效内容' },
   { id: 'analyze', name: '分析 Agent', desc: '情感分析、关键词与观点提取' },
   { id: 'insight', name: '洞察 Agent', desc: '趋势、风险与核心诉求挖掘' },
-  { id: 'debate', name: '交叉验证', desc: '多 Agent 辩论与结论溯源' },
+  { id: 'debate', name: '论坛协作', desc: '主持人引导多轮交叉验证与结论溯源' },
   { id: 'report', name: '报告 Agent', desc: '整合生成舆情分析报告' }
 ]
 
@@ -38,9 +41,10 @@ export const AGENT_STEPS = [
  *        detail: 该步骤的中间产物（供 UI 展开查看）
  * @param {(evt:string, payload:any)=>void} [params.onReport] 报告流式回调
  *        evt: 'token' | 'reasoning'
+ * @param {string} [params.templateId] 报告模板 id（决定章节大纲与风格）
  * @returns {Promise<Object>} 完整分析结果
  */
-export async function runAgentFlow({ keyword, rawText, models, onStep, onReport }) {
+export async function runAgentFlow({ keyword, rawText, models, onStep, onReport, templateId }) {
   const report = onStep || (() => {})
 
   // ---- 模型角色分配 ----
@@ -108,11 +112,43 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
     cause: insight.cause
   })
 
-  // ---- 5. 交叉验证 / 辩论（多模型协作：非主模型独立复核）----
+  // ---- 5. 论坛协作 / 交叉验证（多模型协作：主持人引导多轮复核）----
   let debate = null
   if (ENABLE_DEBATE) {
-    report('debate', 'running', { _running: true, reviewers: validators.map(labelOf) })
-    debate = await debateService({ keyword, analyze, insight, validators })
+    if (FORUM_CONFIG.enabled) {
+      // 多轮论坛：主模型担任主持人，非主模型作为验证 Agent 轮流发言
+      report('debate', 'running', {
+        _running: true,
+        _forum: true,
+        host: labelOf(primary),
+        reviewers: validators.map(labelOf),
+        rounds: []
+      })
+      const liveRounds = []
+      debate = await forumService({
+        keyword,
+        analyze,
+        insight,
+        validators,
+        host: primary,
+        rounds: FORUM_CONFIG.rounds,
+        onRound: (round, payload) => {
+          liveRounds.push(payload)
+          // 逐轮回传，UI 可实时展示论坛进程
+          report('debate', 'running', {
+            _running: true,
+            _forum: true,
+            host: labelOf(primary),
+            reviewers: validators.map(labelOf),
+            rounds: [...liveRounds]
+          })
+        }
+      })
+    } else {
+      // 单轮交叉验证（兼容旧行为）
+      report('debate', 'running', { _running: true, reviewers: validators.map(labelOf) })
+      debate = await debateService({ keyword, analyze, insight, validators })
+    }
     // 若校准后有更新，采用校准情感占比
     if (debate.calibratedSentiment) {
       analyze.sentiment = debate.calibratedSentiment
@@ -123,6 +159,9 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
       disputes: debate.disputes || [],
       supplement: debate.supplement || [],
       reviewers: debate.reviewers || [],
+      rounds: debate.rounds || [],
+      consensus: debate.consensus || [],
+      questions: debate.questions || [],
       trace: debate.trace
     })
   } else {
@@ -133,7 +172,8 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
   const trend = trendPredict({ analyze, insight })
 
   // ---- 6. 报告（流式生成，实时展示 DeepSeek 撰写/思考过程）----
-  report('report', 'running', { _running: true, model: labelOf(primary) })
+  const template = getTemplate(templateId || DEFAULT_TEMPLATE_ID)
+  report('report', 'running', { _running: true, model: labelOf(primary), template: template.name })
   const reportText = await reportAgent({
     keyword,
     cleaned,
@@ -143,6 +183,7 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
     debate,
     sources,
     model: primary,
+    templateId: template.id,
     stream: onReport
       ? {
           onToken: (t) => onReport('token', t),
@@ -150,7 +191,16 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport 
         }
       : undefined
   })
-  report('report', 'done', { length: reportText.length })
 
-  return { keyword, raw, cleaned, analyze, insight, trend, debate, sources, report: reportText }
+  // ---- 报告 IR 化：将 Markdown 解析为结构化中间表示，供多格式渲染（HTML/PDF）----
+  const ir = markdownToIR(reportText, {
+    keyword,
+    templateId: template.id,
+    templateName: template.name,
+    accent: template.accent,
+    riskLevel: trend?.riskLevel || null
+  })
+  report('report', 'done', { length: reportText.length, template: template.name, sections: ir.sections.length })
+
+  return { keyword, raw, cleaned, analyze, insight, trend, debate, sources, report: reportText, ir, templateId: template.id }
 }

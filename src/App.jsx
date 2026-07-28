@@ -6,6 +6,7 @@ import ReportPanel from './components/ReportPanel.jsx'
 import HotList from './components/HotList.jsx'
 import { runAgentFlow } from './services/agentOrchestrator.js'
 import { fetchModels } from './services/llmService.js'
+import { DEFAULT_TEMPLATE_ID } from './report/templates.js'
 import './App.css'
 
 export default function App() {
@@ -19,6 +20,12 @@ export default function App() {
   // 多模型协作：可用模型列表 + 用户选中参与协作的模型 id
   const [models, setModels] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
+  // 主模型 id：默认取列表首位（后端 LLM_PRIMARY 指定，如 Kimi），用户可手动切换
+  const [primaryId, setPrimaryId] = useState('')
+  // 热搜等外部回填的关键词（同步到输入框）
+  const [seedKeyword, setSeedKeyword] = useState(null)
+  // 报告模板 id（决定章节大纲与导出风格）
+  const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID)
 
   const chartRef = useRef(null)
 
@@ -27,6 +34,8 @@ export default function App() {
     fetchModels().then((list) => {
       setModels(list)
       setSelectedIds(list.map((m) => m.id))
+      // 默认主模型 = 列表首位（后端已把 LLM_PRIMARY 排到最前）
+      if (list.length) setPrimaryId(list[0].id)
     })
   }, [])
 
@@ -34,11 +43,28 @@ export default function App() {
     setSelectedIds((prev) => {
       // 至少保留一个模型
       if (prev.includes(id)) {
-        return prev.length > 1 ? prev.filter((x) => x !== id) : prev
+        if (prev.length <= 1) return prev
+        const next = prev.filter((x) => x !== id)
+        // 若取消勾选的是主模型，自动把剩余选中的第一个设为主模型
+        if (id === primaryId) {
+          const fallback = models.map((m) => m.id).find((x) => next.includes(x))
+          if (fallback) setPrimaryId(fallback)
+        }
+        return next
       }
-      // 保持与 models 同顺序（第一个选中的为主模型）
+      // 保持与 models 同顺序（用于稳定的展示与验证顺序）
       return models.map((m) => m.id).filter((x) => prev.includes(x) || x === id)
     })
+  }
+
+  // 手动指定主模型：确保其处于选中状态
+  function setPrimary(id) {
+    setPrimaryId(id)
+    setSelectedIds((prev) =>
+      prev.includes(id)
+        ? prev
+        : models.map((m) => m.id).filter((x) => prev.includes(x) || x === id)
+    )
   }
 
   // 分析完成后自动滚动到图表区
@@ -62,10 +88,16 @@ export default function App() {
     setError('')
     try {
       const chosen = models.filter((m) => selectedIds.includes(m.id))
+      // 将主模型排到首位（流水线以 selected[0] 为主模型）
+      const ordered = [
+        ...chosen.filter((m) => m.id === primaryId),
+        ...chosen.filter((m) => m.id !== primaryId)
+      ]
       const data = await runAgentFlow({
         keyword,
         rawText,
-        models: chosen,
+        models: ordered,
+        templateId,
         onStep: (stepId, status, detail) => {
           setStatuses((prev) => ({
             ...prev,
@@ -95,6 +127,15 @@ export default function App() {
     }
   }
 
+  // 热搜点击：先把关键词回填到输入框（切到关键词模式），再发起分析
+  function handlePickHot(keyword) {
+    const kw = String(keyword || '').trim()
+    if (!kw || loading) return
+    // seedKeyword 使用包装对象，确保点击同一热点时引用变化可触发 InputPanel 同步
+    setSeedKeyword({ value: kw })
+    handleAnalyze({ keyword: kw })
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -117,10 +158,15 @@ export default function App() {
           models={models}
           selectedIds={selectedIds}
           onToggleModel={toggleModel}
+          primaryId={primaryId}
+          onSetPrimary={setPrimary}
+          seedKeyword={seedKeyword}
+          templateId={templateId}
+          onSelectTemplate={setTemplateId}
         />
 
         <HotList
-          onPick={(keyword) => handleAnalyze({ keyword })}
+          onPick={handlePickHot}
           disabled={loading}
         />
 
@@ -173,7 +219,7 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        AgentMind
+        信息与你无限，AgentMind重塑信息公平。
       </footer>
     </div>
   )

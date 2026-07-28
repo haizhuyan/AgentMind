@@ -107,6 +107,11 @@ export default function AgentFlow({ statuses = {}, loading }) {
 
 /** 根据步骤类型渲染对应的中间产物视图 */
 function renderDetail(stepId, d) {
+  // 论坛协作（运行中或已完成）：优先渲染多轮论坛进程
+  if (stepId === 'debate' && (d?._forum || d?.rounds?.length)) {
+    return renderForum(d)
+  }
+
   // 运行中：展示"处理中"提示与正在协作的模型（真实产物需等该步骤完成）
   if (d && d._running) {
     const list = d.models || (d.reviewers?.length ? d.reviewers : d.model ? [d.model] : [])
@@ -182,20 +187,37 @@ function renderDetail(stepId, d) {
         </>
       )
 
-    case 'analyze':
+    case 'analyze': {
+      const localContrib = (d.contributors || []).find((c) => c.kind === 'local')
+      const modelContribs = (d.contributors || []).filter((c) => c.kind !== 'local')
       return (
         <>
-          {d.contributors?.length > 0 && (
+          {modelContribs.length > 0 && (
             <div className="detail-tag">
               多模型协作分析：
-              {d.contributors.map((c, i) => (
+              {modelContribs.map((c, i) => (
                 <span key={i} className={`model-badge ${c.ok ? '' : 'model-badge-fail'}`}>
                   {c.ok ? '✓' : '✕'} {c.label}
                 </span>
               ))}
             </div>
           )}
-          <div className="detail-tag">情感占比{d.contributors?.length > 1 ? '（多模型集成）' : ''}</div>
+          {localContrib && (
+            <div className="detail-tag">
+              本地情感中间件：
+              <span className="model-badge model-badge-local">
+                🧭 {localContrib.label}
+              </span>
+              <span className="dim">
+                词典命中覆盖 {localContrib.coverage}%（本地占比 正{localContrib.sentiment?.positive}/负
+                {localContrib.sentiment?.negative}/中{localContrib.sentiment?.neutral}），已按权重与 LLM 融合校准
+              </span>
+            </div>
+          )}
+          <div className="detail-tag">
+            情感占比{modelContribs.length > 1 ? '（多模型集成' : '（'}
+            {localContrib ? '＋本地校准）' : modelContribs.length > 1 ? '）' : ''}
+          </div>
           <div className="sentiment-bars">
             <SentiBar label="正面" val={d.sentiment?.positive} color="#22c55e" />
             <SentiBar label="负面" val={d.sentiment?.negative} color="#ef4444" />
@@ -220,6 +242,7 @@ function renderDetail(stepId, d) {
           )}
         </>
       )
+    }
 
     case 'insight':
       return (
@@ -295,6 +318,106 @@ function renderDetail(stepId, d) {
     default:
       return null
   }
+}
+
+/**
+ * 渲染论坛协作（ForumEngine）多轮进程：
+ * 每一轮展示各验证 Agent 发言 + 主持人归纳（共识/分歧/下一轮问题）。
+ */
+function renderForum(d) {
+  const rounds = Array.isArray(d.rounds) ? d.rounds : []
+  const total = d.totalRounds || rounds.length
+  const running = d._running
+
+  return (
+    <div className="forum-view">
+      <div className="detail-tag">
+        论坛协作：主持人{' '}
+        {d.host && <span className="model-badge">{d.host}</span>}
+        {' '}引导{' '}
+        {(d.reviewers || []).map((r, i) => (
+          <span key={i} className="model-badge">
+            {typeof r === 'string' ? r : r.label}
+          </span>
+        ))}
+        {' '}多轮复核
+        {running && (
+          <span className="forum-progress">
+            （进行中 {rounds.length}/{total} 轮）
+          </span>
+        )}
+      </div>
+
+      {rounds.length === 0 && running && (
+        <div className="detail-running">
+          <span className="detail-running-dot" />
+          <span>论坛发言收集中…</span>
+        </div>
+      )}
+
+      {rounds.map((r) => (
+        <div key={r.round} className="forum-round">
+          <div className="forum-round-head">
+            第 {r.round} 轮
+            {typeof r.agreement === 'number' && (
+              <span className="forum-agreement">一致度 {r.agreement}%</span>
+            )}
+          </div>
+
+          {(r.speeches || []).map((s, i) => (
+            <div key={i} className={`forum-speech ${s.ok === false ? 'fail' : ''}`}>
+              <span className="forum-speaker">{s.label}</span>
+              <span className="forum-content">{s.content}</span>
+            </div>
+          ))}
+
+          {r.host && (
+            <div className="forum-host">
+              <div className="forum-host-tag">🎙 主持人归纳</div>
+              {r.host.summary && <p className="forum-host-summary">{r.host.summary}</p>}
+              {r.host.consensus?.length > 0 && (
+                <div className="forum-host-block">
+                  <span className="block-label demand">共识</span>
+                  <ul className="detail-list">
+                    {r.host.consensus.map((c, i) => (
+                      <li key={i}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {r.host.divergences?.length > 0 && (
+                <div className="forum-host-block">
+                  <span className="block-label risk">分歧</span>
+                  <ul className="detail-list">
+                    {r.host.divergences.map((c, i) => (
+                      <li key={i}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {r.host.questions?.length > 0 && (
+                <div className="forum-host-block">
+                  <span className="block-label">下一轮追问</span>
+                  <ul className="detail-list">
+                    {r.host.questions.map((c, i) => (
+                      <li key={i}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {!running && d.trace && (
+        <div className="forum-trace">
+          <b>结论溯源：</b>
+          {d.trace}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function SentiBar({ label, val = 0, color }) {

@@ -23,7 +23,7 @@ export async function callLLM({ system, user, json = false, temperature, model }
     const res = await axios.post(
       `${API_BASE}/llm`,
       { system, user, json, temperature, model },
-      { timeout: 120000, headers: { 'Content-Type': 'application/json' } }
+      { timeout: 180000, headers: { 'Content-Type': 'application/json' } }
     )
 
     const content = res?.data?.content

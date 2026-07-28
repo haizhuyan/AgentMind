@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { buildHtmlReport } from '../utils/htmlReport.js'
+import { downloadReportPdf } from '../utils/pdfExport.js'
 
 /**
  * ReportPanel —— 舆情报告展示区
- * 渲染 Markdown 报告（轻量解析），支持复制与导出交互式 HTML。
+ * 渲染 Markdown 报告（轻量解析），支持复制与导出交互式 HTML / PDF。
  * @param {string} props.report   报告 Agent 生成的 Markdown 文本
  * @param {Object} props.debate   辩论/交叉验证结果（展示溯源）
  * @param {Array}  props.sources  采集来源列表
@@ -11,6 +12,7 @@ import { buildHtmlReport } from '../utils/htmlReport.js'
  */
 export default function ReportPanel({ report, debate, sources = [], result }) {
   const [copied, setCopied] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
 
   async function copy() {
     try {
@@ -36,12 +38,28 @@ export default function ReportPanel({ report, debate, sources = [], result }) {
     URL.revokeObjectURL(url)
   }
 
+  // 导出 PDF：前端直接生成电子版 PDF 文件并下载（非调用打印机）
+  async function exportPdf() {
+    if (pdfLoading) return
+    setPdfLoading(true)
+    try {
+      await downloadReportPdf(result)
+    } catch (err) {
+      alert(`PDF 导出失败：${err?.message || '未知错误'}`)
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
   return (
     <section className="card report-panel">
       <h2 className="card-title">
         <span className="title-bar" />
         舆情分析报告
         <span className="report-actions">
+          <button className="copy-btn" onClick={exportPdf} disabled={pdfLoading}>
+            {pdfLoading ? '生成中…' : '导出 PDF'}
+          </button>
           <button className="copy-btn" onClick={exportHtml}>
             导出 HTML
           </button>

@@ -107,6 +107,11 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+.model-chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .model-chip {
   display: inline-flex;
   align-items: center;
@@ -128,8 +133,33 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+.model-chip.primary {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+}
 .model-chip:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+}
+.model-set-primary {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-1);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.model-set-primary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  border-style: solid;
+}
+.model-set-primary:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 .model-chip-check {
@@ -151,6 +181,45 @@
   color: var(--text-2);
   line-height: 1.5;
 }
+
+/* ---------- 报告模板选择器 ---------- */
+.template-selector {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--border);
+}
+.template-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.template-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--card-inner);
+  border: 1px solid var(--border);
+  color: var(--text-1);
+  padding: 6px 13px;
+  border-radius: 18px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.template-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.template-chip.active {
+  background: rgba(37, 99, 235, 0.08);
+  font-weight: 600;
+}
+.template-chip:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.template-chip-check {
+  font-size: 11px;
+}
 .model-badge {
   display: inline-block;
   background: rgba(37, 99, 235, 0.1);
@@ -165,6 +234,11 @@
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
   border-color: rgba(239, 68, 68, 0.3);
+}
+.model-badge-local {
+  background: rgba(8, 145, 178, 0.1);
+  color: var(--cyan);
+  border-color: rgba(8, 145, 178, 0.35);
 }
 .detail-running {
   display: flex;
@@ -602,6 +676,92 @@
   background: rgba(15, 23, 42, 0.03);
   border-radius: 6px;
   font-size: 12.5px;
+}
+
+/* ---------- 论坛协作（ForumEngine 多轮） ---------- */
+.forum-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.forum-progress {
+  color: var(--cyan);
+  font-size: 12px;
+}
+.forum-round {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.02);
+}
+.forum-round-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.forum-agreement {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--cyan);
+  padding: 1px 8px;
+  border: 1px solid var(--cyan);
+  border-radius: 12px;
+}
+.forum-speech {
+  display: flex;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  border-bottom: 1px dashed var(--border);
+}
+.forum-speech:last-of-type {
+  border-bottom: none;
+}
+.forum-speech.fail {
+  opacity: 0.6;
+}
+.forum-speaker {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: var(--accent-2);
+}
+.forum-content {
+  flex: 1 1 auto;
+  color: var(--text-0);
+}
+.forum-host {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(124, 58, 237, 0.05);
+  border: 1px solid rgba(124, 58, 237, 0.15);
+}
+.forum-host-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-2);
+  margin-bottom: 6px;
+}
+.forum-host-summary {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: var(--text-0);
+}
+.forum-host-block {
+  margin-top: 6px;
+}
+.forum-trace {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(8, 145, 178, 0.06);
+  border: 1px solid rgba(8, 145, 178, 0.2);
+  font-size: 12.5px;
+  color: var(--text-0);
 }
 
 /* ---------- 流式报告面板（思考 + 撰写过程） ---------- */

@@ -1,5 +1,7 @@
 import axios from 'axios'
 import { API_BASE } from '../config.js'
+import { isDemoMode } from './demoMode.js'
+import { DEMO_HOTLIST } from './demoData.js'
 
 /**
  * hotlistService.js —— 全网热搜榜（后端代理）
@@ -12,6 +14,10 @@ import { API_BASE } from '../config.js'
  * @returns {Promise<Array<{title:string, digest:string, hotnum:number}>>}
  */
 export async function fetchHotList() {
+  // 离线演示模式：返回本地预置热搜榜，不发起网络请求
+  if (isDemoMode()) {
+    return DEMO_HOTLIST
+  }
   try {
     const res = await axios.get(`${API_BASE}/hotlist`, { timeout: 15000 })
     const list = res?.data?.list

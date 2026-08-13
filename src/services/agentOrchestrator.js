@@ -77,7 +77,7 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport,
     sources = collected.sources || []
     report('collect', 'done', {
       count: raw.length,
-      mode: '联网搜索（Bocha）',
+      mode: '联网搜索',
       sources: sources.slice(0, 8),
       samples: raw.slice(0, 8)
     })

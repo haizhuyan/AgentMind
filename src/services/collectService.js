@@ -1,5 +1,7 @@
 import axios from 'axios'
 import { API_BASE, COLLECT_CONFIG } from '../config.js'
+import { isDemoMode } from './demoMode.js'
+import { demoCollect } from './demoData.js'
 
 /**
  * collectService.js —— 真实舆情数据采集服务（后端代理）
@@ -16,6 +18,10 @@ import { API_BASE, COLLECT_CONFIG } from '../config.js'
  * @returns {Promise<{texts:string[], sources:Array, aiSummary:string}>}
  */
 export async function collectReal(keyword) {
+  // 离线演示模式：返回本地预置舆情样本，不发起网络请求
+  if (isDemoMode()) {
+    return demoCollect(keyword)
+  }
   try {
     const res = await axios.post(
       `${API_BASE}/collect`,

@@ -55,3 +55,16 @@ export const COLLECT_CONFIG = {
   freshness: 'noLimit'
 }
 
+/**
+ * 离线演示模式配置
+ * ---------------------------------------------------
+ * 用于「无网络 / 未配置密钥」环境下完整展示产品流程。开启后，采集、清洗、
+ * 分析、洞察、论坛、报告、热搜与模型列表等所有原本依赖后端与外部 API 的
+ * 调用，全部由本地预置演示数据模拟返回，不发起任何网络请求，流水线动画、
+ * 图表、报告与导出照常运行。运行时可在界面开关中随时切换（localStorage 记忆）。
+ * - defaultEnabled: 首次进入时的默认状态（用户切换后以 localStorage 为准）。
+ */
+export const DEMO_CONFIG = {
+  defaultEnabled: false
+}
+

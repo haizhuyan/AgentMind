@@ -6,6 +6,7 @@ import ReportPanel from './components/ReportPanel.jsx'
 import HotList from './components/HotList.jsx'
 import { runAgentFlow } from './services/agentOrchestrator.js'
 import { fetchModels } from './services/llmService.js'
+import { useDemoMode } from './services/demoMode.js'
 import { DEFAULT_TEMPLATE_ID } from './report/templates.js'
 import './App.css'
 
@@ -26,10 +27,14 @@ export default function App() {
   const [seedKeyword, setSeedKeyword] = useState(null)
   // 报告模板 id（决定章节大纲与导出风格）
   const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID)
+  // 离线演示模式：无网络/未配置密钥时以本地预置数据完整展示流程
+  const [demoMode, setDemoMode] = useDemoMode()
+  // 本次分析对象关键词（用于协作流程产物导出，失败/中断时仍可用）
+  const [activeKeyword, setActiveKeyword] = useState('')
 
   const chartRef = useRef(null)
 
-  // 启动时拉取后端已配置的模型，默认全选（全部参与协作）
+  // 启动时 & 切换离线演示模式时：拉取对应的模型列表，默认全选（全部参与协作）
   useEffect(() => {
     fetchModels().then((list) => {
       setModels(list)
@@ -37,7 +42,7 @@ export default function App() {
       // 默认主模型 = 列表首位（后端已把 LLM_PRIMARY 排到最前）
       if (list.length) setPrimaryId(list[0].id)
     })
-  }, [])
+  }, [demoMode])
 
   function toggleModel(id) {
     setSelectedIds((prev) => {
@@ -86,6 +91,7 @@ export default function App() {
     reset()
     setLoading(true)
     setError('')
+    setActiveKeyword(keyword || '')
     try {
       const chosen = models.filter((m) => selectedIds.includes(m.id))
       // 将主模型排到首位（流水线以 selected[0] 为主模型）
@@ -166,6 +172,7 @@ export default function App() {
         />
 
         <HotList
+          key={demoMode ? 'demo' : 'live'}
           onPick={handlePickHot}
           disabled={loading}
         />
@@ -177,7 +184,7 @@ export default function App() {
         )}
 
         {(loading || result) && (
-          <AgentFlow statuses={statuses} loading={loading} />
+          <AgentFlow statuses={statuses} loading={loading} keyword={result?.keyword || activeKeyword} />
         )}
 
         {/* 报告生成中：实时展示 DeepSeek 思考 + 撰写过程 */}
@@ -219,7 +226,27 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        信息与你无限，AgentMind重塑信息公平。
+        <label
+          className={`demo-toggle ${demoMode ? 'on' : ''}`}
+          title="无网络或未配置密钥时，用本地预置数据完整演示全流程"
+        >
+          <input
+            type="checkbox"
+            checked={demoMode}
+            disabled={loading}
+            onChange={(e) => {
+              setDemoMode(e.target.checked)
+              reset()
+            }}
+          />
+          <span className="demo-toggle-track">
+            <span className="demo-toggle-thumb" />
+          </span>
+          <span className="demo-toggle-text">
+            离线演示模式{demoMode ? '：已开启' : ''}
+          </span>
+        </label>
+        <p className="app-footer-text">信息与你无限，AgentMind重塑信息公平。</p>
       </footer>
     </div>
   )

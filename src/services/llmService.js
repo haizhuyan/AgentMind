@@ -1,5 +1,7 @@
 import axios from 'axios'
 import { API_BASE } from '../config.js'
+import { isDemoMode } from './demoMode.js'
+import { demoLLM, demoLLMStream, DEMO_MODELS } from './demoData.js'
 
 /**
  * llmService.js —— 大模型调用（后端代理）
@@ -19,6 +21,10 @@ import { API_BASE } from '../config.js'
  * @returns {Promise<string>} 模型返回的文本内容
  */
 export async function callLLM({ system, user, json = false, temperature, model }) {
+  // 离线演示模式：本地模拟返回，不发起网络请求
+  if (isDemoMode()) {
+    return demoLLM({ system, user, model })
+  }
   try {
     const res = await axios.post(
       `${API_BASE}/llm`,
@@ -56,6 +62,10 @@ export async function callLLM({ system, user, json = false, temperature, model }
  * @returns {Promise<string>} 完整正文
  */
 export async function callLLMStream({ system, user, temperature, onToken, onReasoning, model }) {
+  // 离线演示模式：本地模拟流式返回，不发起网络请求
+  if (isDemoMode()) {
+    return demoLLMStream({ system, user, onToken, onReasoning })
+  }
   const res = await fetch(`${API_BASE}/llm/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -151,6 +161,10 @@ export function parseJSON(text) {
  * @returns {Promise<Array<{id:string, label:string, model:string}>>}
  */
 export async function fetchModels() {
+  // 离线演示模式：返回预置演示模型列表
+  if (isDemoMode()) {
+    return DEMO_MODELS
+  }
   try {
     const res = await axios.get(`${API_BASE}/models`, { timeout: 8000 })
     const models = res?.data?.models

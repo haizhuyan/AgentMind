@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { AGENT_STEPS } from '../services/agentOrchestrator.js'
 import { ENABLE_DEBATE } from '../config.js'
+import {
+  buildFlowMarkdown,
+  buildFlowHtml,
+  downloadTextFile,
+  safeName
+} from '../utils/flowExport.js'
 
 /**
  * AgentFlow —— 智能体运行状态 + 中间产物展示区
@@ -9,9 +15,11 @@ import { ENABLE_DEBATE } from '../config.js'
  * @param {Object} props
  * @param {Object} props.statuses  { stepId: { status, detail } }
  * @param {boolean} props.loading
+ * @param {string} [props.keyword] 分析对象（用于导出文件名与文档头）
  */
-export default function AgentFlow({ statuses = {}, loading }) {
+export default function AgentFlow({ statuses = {}, loading, keyword }) {
   const [open, setOpen] = useState({})
+  const [copied, setCopied] = useState(false)
 
   const steps = ENABLE_DEBATE
     ? AGENT_STEPS
@@ -48,6 +56,32 @@ export default function AgentFlow({ statuses = {}, loading }) {
     setOpen((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
+  // 是否有可导出的产物（至少一个步骤已完成）
+  const hasProducts = steps.some((s) => {
+    const st = statuses[s.id]?.status
+    return (st === 'done' || st === 'failed') && statuses[s.id]?.detail
+  })
+
+  function exportHtml() {
+    const html = buildFlowHtml(statuses, { keyword })
+    downloadTextFile(html, `协作流程产物_${safeName(keyword)}_${Date.now()}.html`, 'text/html')
+  }
+
+  function exportMarkdown() {
+    const md = buildFlowMarkdown(statuses, { keyword })
+    downloadTextFile(md, `协作流程产物_${safeName(keyword)}_${Date.now()}.md`, 'text/markdown')
+  }
+
+  async function copyMarkdown() {
+    try {
+      await navigator.clipboard.writeText(buildFlowMarkdown(statuses, { keyword }))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+    }
+  }
+
   const progress =
     (steps.filter((s) => {
       const st = statuses[s.id]?.status
@@ -62,6 +96,19 @@ export default function AgentFlow({ statuses = {}, loading }) {
         <span className="title-bar" />
         多智能体协作流程
         {loading && <span className="live-tag">运行中</span>}
+        {hasProducts && !loading && (
+          <span className="report-actions">
+            <button className="copy-btn" onClick={exportHtml}>
+              导出 HTML
+            </button>
+            <button className="copy-btn" onClick={exportMarkdown}>
+              导出 Markdown
+            </button>
+            <button className="copy-btn" onClick={copyMarkdown}>
+              {copied ? '已复制 ✓' : '复制产物'}
+            </button>
+          </span>
+        )}
       </h2>
 
       {/* 顶部进度条 */}

@@ -15,7 +15,7 @@ export const REPORT_TEMPLATES = [
     id: 'general',
     name: '通用舆情分析报告',
     desc: '适用于大多数关键词舆情的标准分析结构',
-    accent: '#2563eb',
+    accent: '#007aff',
     sections: [
       { title: '舆情概况', guide: '概述事件背景、传播范围与总体态势' },
       { title: '情感分析', guide: '解读正/负/中性占比及其含义，指出情绪主导面' },
@@ -28,7 +28,7 @@ export const REPORT_TEMPLATES = [
     id: 'brand',
     name: '企业品牌声誉分析报告',
     desc: '面向企业/品牌的声誉健康度评估',
-    accent: '#7c3aed',
+    accent: '#5856d6',
     sections: [
       { title: '品牌声誉概况', guide: '总体声誉态势与舆论关注焦点' },
       { title: '口碑情感画像', guide: '正负口碑结构、典型正面/负面声音' },
@@ -41,7 +41,7 @@ export const REPORT_TEMPLATES = [
     id: 'crisis',
     name: '危机公关应对报告',
     desc: '突发负面/危机事件的快速研判与处置',
-    accent: '#dc2626',
+    accent: '#ff3b30',
     sections: [
       { title: '事件概述', guide: '危机事件的起因、经过与当前状态' },
       { title: '舆论态势研判', guide: '情绪烈度、扩散速度与关键传播节点' },
@@ -54,7 +54,7 @@ export const REPORT_TEMPLATES = [
     id: 'review',
     name: '事件舆情复盘报告',
     desc: '事件平息后的完整回顾与经验沉淀',
-    accent: '#0891b2',
+    accent: '#5856d6',
     sections: [
       { title: '事件回顾', guide: '按时间线还原事件全貌与关键转折' },
       { title: '传播路径分析', guide: '舆情发酵、发展、平息的传播脉络' },

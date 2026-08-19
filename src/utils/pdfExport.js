@@ -34,7 +34,7 @@ export async function downloadReportPdf(result) {
   const keywords = analyze?.keywords || []
   const generatedAt = new Date().toLocaleString('zh-CN')
   const templateName = ir.meta?.templateName || '舆情分析报告'
-  const accent = ir.meta?.accent || '#2563eb'
+  const accent = ir.meta?.accent || '#1d1d1f'
 
   const sourcesHtml = sources.length
     ? sources
@@ -56,31 +56,31 @@ export async function downloadReportPdf(result) {
   // 屏幕外容器：A4 内容宽度约 760px（794px 减去左右边距）
   const container = document.createElement('div')
   container.style.cssText =
-    'position:fixed;left:-10000px;top:0;width:760px;background:#fff;color:#1e293b;' +
+    'position:fixed;left:-10000px;top:0;width:760px;background:#fff;color:#1d1d1f;' +
     'font-family:"Microsoft YaHei",system-ui,sans-serif;line-height:1.75;padding:8px;'
   container.innerHTML = `
     <style>
-      .pdf-root h1.main { font-size:24px; margin:0 0 6px; color:#0f172a; }
-      .pdf-root .meta { color:#64748b; font-size:12.5px; }
+      .pdf-root h1.main { font-size:24px; margin:0 0 6px; color:#1d1d1f; }
+      .pdf-root .meta { color:#6e6e73; font-size:12.5px; }
       .pdf-root header { border-bottom:2px solid ${accent}; padding-bottom:14px; margin-bottom:18px; }
       .pdf-root .badge { display:inline-block; color:#fff; padding:2px 10px; border-radius:12px; font-size:12px; margin-left:8px; }
       .pdf-root .cards { display:flex; gap:16px; margin:16px 0; }
-      .pdf-root .card { flex:1; border:1px solid #e4e9f2; border-radius:10px; padding:12px; }
-      .pdf-root .card h3 { margin:0 0 8px; font-size:14px; color:#334155; }
+      .pdf-root .card { flex:1; border:1px solid #e1e1e4; border-radius:10px; padding:12px; }
+      .pdf-root .card h3 { margin:0 0 8px; font-size:14px; color:#48484a; }
       .pdf-root .chart { width:100%; height:230px; }
-      .pdf-root h2 { font-size:17px; margin:18px 0 8px; color:#0f172a; border-left:4px solid ${accent}; padding-left:10px; }
+      .pdf-root h2 { font-size:17px; margin:18px 0 8px; color:#1d1d1f; border-left:4px solid ${accent}; padding-left:10px; }
       .pdf-root ul, .pdf-root ol { padding-left:22px; margin:6px 0; }
-      .pdf-root blockquote { margin:10px 0; padding:8px 14px; border-left:3px solid ${accent}; background:#f1f5f9; color:#334155; }
+      .pdf-root blockquote { margin:10px 0; padding:8px 14px; border-left:3px solid ${accent}; background:#f5f5f7; color:#48484a; }
       .pdf-root sup.cite { color:${accent}; font-size:11px; }
-      .pdf-root .ir-toc { border:1px solid #e4e9f2; border-radius:10px; padding:12px 16px; margin:14px 0; }
-      .pdf-root .ir-toc .toc-title { font-weight:700; margin-bottom:6px; color:#334155; }
+      .pdf-root .ir-toc { border:1px solid #e1e1e4; border-radius:10px; padding:12px 16px; margin:14px 0; }
+      .pdf-root .ir-toc .toc-title { font-weight:700; margin-bottom:6px; color:#48484a; }
       .pdf-root .ir-toc a { color:${accent}; text-decoration:none; }
       .pdf-root .ir-section { page-break-inside:avoid; }
       .pdf-root .sources li { margin-bottom:5px; font-size:13px; list-style:none; }
       .pdf-root .sources { padding-left:0; }
       .pdf-root .sources .idx { color:${accent}; margin-right:4px; }
-      .pdf-root .dim { color:#94a3b8; font-size:12px; }
-      .pdf-root footer { margin-top:26px; color:#94a3b8; font-size:12px; text-align:center; }
+      .pdf-root .dim { color:#a1a1a6; font-size:12px; }
+      .pdf-root footer { margin-top:26px; color:#a1a1a6; font-size:12px; text-align:center; }
     </style>
     <div class="pdf-root">
       <header>
@@ -109,18 +109,18 @@ export async function downloadReportPdf(result) {
   pie.setOption({
     animation: false,
     tooltip: { show: false },
-    legend: { bottom: 0, textStyle: { color: '#64748b' }, icon: 'circle' },
+    legend: { bottom: 0, textStyle: { color: '#6e6e73' }, icon: 'circle' },
     series: [
       {
         type: 'pie',
         radius: ['42%', '68%'],
         center: ['50%', '44%'],
         itemStyle: { borderColor: '#fff', borderWidth: 3 },
-        label: { color: '#1e293b', formatter: '{b}\n{d}%' },
+        label: { color: '#1d1d1f', formatter: '{b}\n{d}%' },
         data: [
-          { value: s.positive, name: '正面', itemStyle: { color: '#22c55e' } },
-          { value: s.negative, name: '负面', itemStyle: { color: '#ef4444' } },
-          { value: s.neutral, name: '中性', itemStyle: { color: '#60a5fa' } }
+          { value: s.positive, name: '正面', itemStyle: { color: '#34c759' } },
+          { value: s.negative, name: '负面', itemStyle: { color: '#ff3b30' } },
+          { value: s.neutral, name: '中性', itemStyle: { color: '#007aff' } }
         ]
       }
     ]
@@ -131,9 +131,9 @@ export async function downloadReportPdf(result) {
     animation: false,
     tooltip: { show: false },
     grid: { left: 80, right: 20, top: 10, bottom: 20 },
-    xAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#e4e9f2' } } },
-    yAxis: { type: 'category', data: topKw.map((k) => k.word), axisLabel: { color: '#1e293b' } },
-    series: [{ type: 'bar', data: topKw.map((k) => k.weight || 0), itemStyle: { color: '#38bdf8', borderRadius: [0, 4, 4, 0] } }]
+    xAxis: { type: 'value', axisLabel: { color: '#6e6e73' }, splitLine: { lineStyle: { color: '#e1e1e4' } } },
+    yAxis: { type: 'category', data: topKw.map((k) => k.word), axisLabel: { color: '#1d1d1f' } },
+    series: [{ type: 'bar', data: topKw.map((k) => k.weight || 0), itemStyle: { color: '#007aff', borderRadius: [0, 4, 4, 0] } }]
   })
 
   const kw = (keyword || 'report').replace(/[\\/:*?"<>|]/g, '_')

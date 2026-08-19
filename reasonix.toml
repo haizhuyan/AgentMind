@@ -1,0 +1,2 @@
+[permissions]
+allow = ["Bash=cd /d/TRS/Desktop/files/projects/AgentMind && npm run build 2>&1 | tail -15", "Bash=nohup npx vite --port 5175 > /tmp/vite-layout.log 2>&1 &\nsleep 4\ncat /tmp/vite-layout.log | head -6\necho \"=== 首页 ===\"\ncurl -s -o /dev/null -w \"HTTP_STATUS:%{http_code}\\n\" http://localhost:5175/\necho \"=== 页面包含 root 挂载点 ===\"\ncurl -s http://localhost:5175/ | grep -o '<div id=\"root\"></div>' \necho \"=== API 代理链路 ===\"\ncurl -s http://localhost:5175/api/health"]

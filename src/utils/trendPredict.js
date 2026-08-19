@@ -21,13 +21,13 @@ function evaluateRisk(sentiment = {}, riskCount = 0) {
   )
 
   let level = '低'
-  let color = '#22c55e'
+  let color = '#34c759'
   if (score >= 60) {
     level = '高'
-    color = '#ef4444'
+    color = '#ff3b30'
   } else if (score >= 35) {
     level = '中'
-    color = '#f59e0b'
+    color = '#ff9500'
   }
   return { level, score, color }
 }

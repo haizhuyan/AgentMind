@@ -266,9 +266,9 @@ function renderDetail(stepId, d) {
             {localContrib ? '＋本地校准）' : modelContribs.length > 1 ? '）' : ''}
           </div>
           <div className="sentiment-bars">
-            <SentiBar label="正面" val={d.sentiment?.positive} color="#22c55e" />
-            <SentiBar label="负面" val={d.sentiment?.negative} color="#ef4444" />
-            <SentiBar label="中性" val={d.sentiment?.neutral} color="#60a5fa" />
+            <SentiBar label="正面" val={d.sentiment?.positive} color="#34c759" />
+            <SentiBar label="负面" val={d.sentiment?.negative} color="#ff3b30" />
+            <SentiBar label="中性" val={d.sentiment?.neutral} color="#007aff" />
           </div>
           {d.keywords?.length > 0 && (
             <div className="detail-chips">

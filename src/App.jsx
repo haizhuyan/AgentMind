@@ -1,13 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
 import InputPanel from './components/InputPanel.jsx'
+import SidebarConfig from './components/SidebarConfig.jsx'
 import AgentFlow from './components/AgentFlow.jsx'
 import ChartPanel from './components/ChartPanel.jsx'
 import ReportPanel from './components/ReportPanel.jsx'
 import HotList from './components/HotList.jsx'
+import GuideCards from './components/GuideCards.jsx'
+import HistoryPanel from './components/HistoryPanel.jsx'
 import { runAgentFlow } from './services/agentOrchestrator.js'
 import { fetchModels } from './services/llmService.js'
 import { useDemoMode } from './services/demoMode.js'
 import { DEFAULT_TEMPLATE_ID } from './report/templates.js'
+import { loadHistory, saveHistory, removeHistoryItem, clearHistory } from './utils/historyStore.js'
 import './App.css'
 
 export default function App() {
@@ -31,8 +35,15 @@ export default function App() {
   const [demoMode, setDemoMode] = useDemoMode()
   // 本次分析对象关键词（用于协作流程产物导出，失败/中断时仍可用）
   const [activeKeyword, setActiveKeyword] = useState('')
+  // 历史分析记录（localStorage 持久化，最新在前）
+  const [history, setHistory] = useState([])
 
   const chartRef = useRef(null)
+
+  // 启动时加载历史分析记录
+  useEffect(() => {
+    setHistory(loadHistory())
+  }, [])
 
   // 启动时 & 切换离线演示模式时：拉取对应的模型列表，默认全选（全部参与协作）
   useEffect(() => {
@@ -92,6 +103,8 @@ export default function App() {
     setLoading(true)
     setError('')
     setActiveKeyword(keyword || '')
+    // 记录历史分析（去重置顶，最多保留 10 条）
+    if (keyword) setHistory(saveHistory(keyword))
     try {
       const chosen = models.filter((m) => selectedIds.includes(m.id))
       // 将主模型排到首位（流水线以 selected[0] 为主模型）
@@ -133,8 +146,8 @@ export default function App() {
     }
   }
 
-  // 热搜点击：先把关键词回填到输入框（切到关键词模式），再发起分析
-  function handlePickHot(keyword) {
+  // 热搜/历史记录点击：先把关键词回填到输入框（切到关键词模式），再发起分析
+  function handlePickKeyword(keyword) {
     const kw = String(keyword || '').trim()
     if (!kw || loading) return
     // seedKeyword 使用包装对象，确保点击同一热点时引用变化可触发 InputPanel 同步
@@ -142,40 +155,75 @@ export default function App() {
     handleAnalyze({ keyword: kw })
   }
 
+  // 删除单条历史记录
+  function handleRemoveHistory(keyword) {
+    setHistory(removeHistoryItem(keyword))
+  }
+
+  // 清空全部历史记录
+  function handleClearHistory() {
+    setHistory(clearHistory())
+  }
+
   return (
     <div className="app">
-      <header className="app-header">
-        <div className="logo">
-          <span className="logo-icon" />
-          AgentMind
-        </div>
-        <h1 className="app-title">AI 多智能体舆情分析系统</h1>
-        <p className="app-subtitle">
-          一句话需求 → 采集 · 清洗 · 分析 · 洞察 · 辩论 · 报告 全自动闭环
-        </p>
-      </header>
+      {/* 左侧固定栏：品牌 + 模型/模板配置 + 离线演示开关 */}
+      <aside className="sidebar sidebar-left">
+        <header className="app-header">
+          <div className="logo">
+            <span className="logo-icon" />
+            AgentMind
+          </div>
+          <h1 className="app-title">AI 多智能体舆情分析系统</h1>
+        </header>
 
-      <main className="app-main">
-        <InputPanel
+        <SidebarConfig
           loading={loading}
-          onAnalyze={handleAnalyze}
-          onReset={reset}
-          hasResult={!!result}
           models={models}
           selectedIds={selectedIds}
           onToggleModel={toggleModel}
           primaryId={primaryId}
           onSetPrimary={setPrimary}
-          seedKeyword={seedKeyword}
           templateId={templateId}
           onSelectTemplate={setTemplateId}
         />
 
-        <HotList
-          key={demoMode ? 'demo' : 'live'}
-          onPick={handlePickHot}
-          disabled={loading}
+        <div className="sidebar-bottom">
+          <label
+            className={`demo-toggle ${demoMode ? 'on' : ''}`}
+            title="无网络或未配置密钥时，用本地预置数据完整演示全流程"
+          >
+            <input
+              type="checkbox"
+              checked={demoMode}
+              disabled={loading}
+              onChange={(e) => {
+                setDemoMode(e.target.checked)
+                reset()
+              }}
+            />
+            <span className="demo-toggle-track">
+              <span className="demo-toggle-thumb" />
+            </span>
+            <span className="demo-toggle-text">
+              离线演示模式{demoMode ? '：已开启' : ''}
+            </span>
+          </label>
+        </div>
+      </aside>
+
+      {/* 中间主区：搜索框 + 流程 + 报告 */}
+      <main className="main-center">
+        <InputPanel
+          loading={loading}
+          onAnalyze={handleAnalyze}
+          onReset={reset}
+          hasResult={!!result}
+          seedKeyword={seedKeyword}
         />
+
+        {/* 未开始分析时：展示多智能体流程引导卡（填充中间区域） */}
+        {!loading && !result && <GuideCards />}
 
         {error && (
           <div className="error-banner">
@@ -223,31 +271,25 @@ export default function App() {
             </>
           )}
         </div>
+
+        {/* 历史分析记录：点击一键重新分析 */}
+        <HistoryPanel
+          history={history}
+          onPick={handlePickKeyword}
+          onRemove={handleRemoveHistory}
+          onClear={handleClearHistory}
+          disabled={loading}
+        />
       </main>
 
-      <footer className="app-footer">
-        <label
-          className={`demo-toggle ${demoMode ? 'on' : ''}`}
-          title="无网络或未配置密钥时，用本地预置数据完整演示全流程"
-        >
-          <input
-            type="checkbox"
-            checked={demoMode}
-            disabled={loading}
-            onChange={(e) => {
-              setDemoMode(e.target.checked)
-              reset()
-            }}
-          />
-          <span className="demo-toggle-track">
-            <span className="demo-toggle-thumb" />
-          </span>
-          <span className="demo-toggle-text">
-            离线演示模式{demoMode ? '：已开启' : ''}
-          </span>
-        </label>
-        <p className="app-footer-text">信息与你无限，AgentMind重塑信息公平。</p>
-      </footer>
+      {/* 右侧栏：实时热搜榜 */}
+      <aside className="sidebar sidebar-right">
+        <HotList
+          key={demoMode ? 'demo' : 'live'}
+          onPick={handlePickKeyword}
+          disabled={loading}
+        />
+      </aside>
     </div>
   )
 }

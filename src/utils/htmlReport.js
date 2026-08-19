@@ -18,10 +18,10 @@ function resolveIR(result) {
 /** 生成情感/关键词图表所需的公共脚本片段。 */
 function chartScript(s, keywords, theme) {
   const isDark = theme === 'dark'
-  const axisColor = isDark ? '#9aa8c7' : '#64748b'
-  const labelColor = isDark ? '#e8edf7' : '#1e293b'
-  const splitColor = isDark ? '#1e2a4a' : '#e4e9f2'
-  const borderColor = isDark ? '#111a33' : '#ffffff'
+  const axisColor = isDark ? '#a1a1a6' : '#6e6e73'
+  const labelColor = isDark ? '#f5f5f7' : '#1d1d1f'
+  const splitColor = isDark ? '#26262a' : '#e1e1e4'
+  const borderColor = isDark ? '#1d1d1f' : '#ffffff'
   return `
   const sentiment = ${JSON.stringify(s)};
   const keywords = ${JSON.stringify(keywords)};
@@ -32,9 +32,9 @@ function chartScript(s, keywords, theme) {
       itemStyle:{borderColor:'${borderColor}',borderWidth:3},
       label:{color:'${labelColor}',formatter:'{b}\\n{d}%'},
       data:[
-        {value:sentiment.positive,name:'正面',itemStyle:{color:'#22c55e'}},
-        {value:sentiment.negative,name:'负面',itemStyle:{color:'#ef4444'}},
-        {value:sentiment.neutral,name:'中性',itemStyle:{color:'#60a5fa'}}
+        {value:sentiment.positive,name:'正面',itemStyle:{color:'#34c759'}},
+        {value:sentiment.negative,name:'负面',itemStyle:{color:'#ff3b30'}},
+        {value:sentiment.neutral,name:'中性',itemStyle:{color:'#007aff'}}
       ]}]
   });
   const topKw = [...keywords].sort((a,b)=>(b.weight||0)-(a.weight||0)).slice(0,10).reverse();
@@ -44,7 +44,7 @@ function chartScript(s, keywords, theme) {
     xAxis:{type:'value',axisLabel:{color:'${axisColor}'},splitLine:{lineStyle:{color:'${splitColor}'}}},
     yAxis:{type:'category',data:topKw.map(k=>k.word),axisLabel:{color:'${labelColor}'}},
     series:[{type:'bar',data:topKw.map(k=>k.weight||0),
-      itemStyle:{color:'#38bdf8',borderRadius:[0,4,4,0]}}]
+      itemStyle:{color:'#007aff',borderRadius:[0,4,4,0]}}]
   });`
 }
 
@@ -88,29 +88,29 @@ export function buildHtmlReport(result) {
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin:0; background:#0b1228; color:#e8edf7; font-family:"Microsoft YaHei",system-ui,sans-serif; line-height:1.7; }
+  body { margin:0; background:#161617; color:#f5f5f7; font-family:"Microsoft YaHei",system-ui,sans-serif; line-height:1.7; }
   .wrap { max-width:960px; margin:0 auto; padding:40px 24px 80px; }
-  header { border-bottom:1px solid #1e2a4a; padding-bottom:20px; margin-bottom:28px; }
+  header { border-bottom:1px solid #26262a; padding-bottom:20px; margin-bottom:28px; }
   h1.main { font-size:26px; margin:0 0 8px; }
-  .meta { color:#9aa8c7; font-size:13px; }
+  .meta { color:#a1a1a6; font-size:13px; }
   .badge { display:inline-block; color:#fff; padding:2px 10px; border-radius:12px; font-size:12px; margin-left:8px; }
   .cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:24px 0; }
-  .card { background:#111a33; border:1px solid #1e2a4a; border-radius:12px; padding:16px; }
-  .card h3 { margin:0 0 12px; font-size:15px; color:#c7d2e8; }
+  .card { background:#1d1d1f; border:1px solid #26262a; border-radius:12px; padding:16px; }
+  .card h3 { margin:0 0 12px; font-size:15px; color:#e8e8ea; }
   .chart { width:100%; height:280px; }
-  h1,h2 { color:#dbe4f7; }
-  h2 { font-size:18px; margin-top:28px; border-left:3px solid #38bdf8; padding-left:10px; }
+  h1,h2 { color:#f5f5f7; }
+  h2 { font-size:18px; margin-top:28px; border-left:3px solid #007aff; padding-left:10px; }
   ul,ol { padding-left:22px; }
-  blockquote { margin:10px 0; padding:8px 14px; border-left:3px solid #38bdf8; background:rgba(56,189,248,0.08); color:#c7d2e8; }
-  sup.cite { color:#38bdf8; font-size:11px; }
-  .ir-toc { background:#111a33; border:1px solid #1e2a4a; border-radius:12px; padding:14px 18px; margin:20px 0; }
-  .ir-toc .toc-title { font-weight:700; margin-bottom:6px; color:#c7d2e8; }
-  .ir-toc a { color:#9fc7ff; text-decoration:none; }
+  blockquote { margin:10px 0; padding:8px 14px; border-left:3px solid #007aff; background:rgba(0,122,255,0.08); color:#e8e8ea; }
+  sup.cite { color:#007aff; font-size:11px; }
+  .ir-toc { background:#1d1d1f; border:1px solid #26262a; border-radius:12px; padding:14px 18px; margin:20px 0; }
+  .ir-toc .toc-title { font-weight:700; margin-bottom:6px; color:#e8e8ea; }
+  .ir-toc a { color:#a1a1a6; text-decoration:none; }
   .sources li { margin-bottom:6px; font-size:14px; }
-  .sources .idx { color:#38bdf8; margin-right:4px; }
-  .dim { color:#6b7a9e; font-size:12px; }
-  a { color:#38bdf8; }
-  footer { margin-top:40px; color:#6b7a9e; font-size:12px; text-align:center; }
+  .sources .idx { color:#007aff; margin-right:4px; }
+  .dim { color:#8e8e93; font-size:12px; }
+  a { color:#007aff; }
+  footer { margin-top:40px; color:#8e8e93; font-size:12px; text-align:center; }
 </style>
 </head>
 <body>
@@ -157,7 +157,7 @@ export function buildPrintableReport(result, autoPrint = true) {
   const keywords = analyze?.keywords || []
   const generatedAt = new Date().toLocaleString('zh-CN')
   const templateName = ir.meta?.templateName || '舆情分析报告'
-  const accent = ir.meta?.accent || '#2563eb'
+  const accent = ir.meta?.accent || '#1d1d1f'
 
   const sourcesHtml = sources.length
     ? sources
@@ -189,28 +189,28 @@ export function buildPrintableReport(result, autoPrint = true) {
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
   * { box-sizing: border-box; }
-  body { margin:0; background:#fff; color:#1e293b; font-family:"Microsoft YaHei",system-ui,sans-serif; line-height:1.75; }
+  body { margin:0; background:#fff; color:#1d1d1f; font-family:"Microsoft YaHei",system-ui,sans-serif; line-height:1.75; }
   .wrap { max-width:820px; margin:0 auto; padding:32px 28px 60px; }
   header { border-bottom:2px solid ${accent}; padding-bottom:16px; margin-bottom:22px; }
-  h1.main { font-size:24px; margin:0 0 6px; color:#0f172a; }
-  .meta { color:#64748b; font-size:12.5px; }
+  h1.main { font-size:24px; margin:0 0 6px; color:#1d1d1f; }
+  .meta { color:#6e6e73; font-size:12.5px; }
   .badge { display:inline-block; color:#fff; padding:2px 10px; border-radius:12px; font-size:12px; margin-left:8px; }
   .cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:20px 0; }
-  .card { border:1px solid #e4e9f2; border-radius:10px; padding:14px; }
-  .card h3 { margin:0 0 8px; font-size:14px; color:#334155; }
+  .card { border:1px solid #e1e1e4; border-radius:10px; padding:14px; }
+  .card h3 { margin:0 0 8px; font-size:14px; color:#48484a; }
   .chart { width:100%; height:240px; }
-  h2 { font-size:17px; margin-top:22px; color:#0f172a; border-left:4px solid ${accent}; padding-left:10px; }
+  h2 { font-size:17px; margin-top:22px; color:#1d1d1f; border-left:4px solid ${accent}; padding-left:10px; }
   ul,ol { padding-left:22px; }
-  blockquote { margin:10px 0; padding:8px 14px; border-left:3px solid ${accent}; background:#f1f5f9; color:#334155; }
+  blockquote { margin:10px 0; padding:8px 14px; border-left:3px solid ${accent}; background:#f5f5f7; color:#48484a; }
   sup.cite { color:${accent}; font-size:11px; }
-  .ir-toc { border:1px solid #e4e9f2; border-radius:10px; padding:12px 16px; margin:16px 0; page-break-inside:avoid; }
-  .ir-toc .toc-title { font-weight:700; margin-bottom:6px; color:#334155; }
+  .ir-toc { border:1px solid #e1e1e4; border-radius:10px; padding:12px 16px; margin:16px 0; page-break-inside:avoid; }
+  .ir-toc .toc-title { font-weight:700; margin-bottom:6px; color:#48484a; }
   .ir-toc a { color:${accent}; text-decoration:none; }
   .ir-section { page-break-inside:avoid; }
   .sources li { margin-bottom:5px; font-size:13px; }
   .sources .idx { color:${accent}; margin-right:4px; }
-  .dim { color:#94a3b8; font-size:12px; }
-  footer { margin-top:32px; color:#94a3b8; font-size:12px; text-align:center; }
+  .dim { color:#a1a1a6; font-size:12px; }
+  footer { margin-top:32px; color:#a1a1a6; font-size:12px; text-align:center; }
   @page { size:A4; margin:16mm 14mm; }
   @media print {
     .cards { -webkit-print-color-adjust:exact; print-color-adjust:exact; }

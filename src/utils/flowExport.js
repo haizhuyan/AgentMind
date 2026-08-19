@@ -234,21 +234,21 @@ export function buildFlowHtml(statuses = {}, meta = {}) {
 <title>${title}</title>
 <style>
   :root{color-scheme:dark;}
-  body{margin:0;padding:32px 16px;background:#0b1020;color:#e8edf7;
+  body{margin:0;padding:32px 16px;background:#161617;color:#f5f5f7;
     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;line-height:1.7;}
-  .wrap{max-width:860px;margin:0 auto;background:#111a33;border:1px solid #1e2a4a;
+  .wrap{max-width:860px;margin:0 auto;background:#1d1d1f;border:1px solid #26262a;
     border-radius:14px;padding:28px 32px;box-shadow:0 8px 30px rgba(0,0,0,.35);}
-  h1{font-size:26px;margin:0 0 8px;color:#7cc0ff;}
-  h2{font-size:19px;margin:26px 0 10px;padding-left:10px;border-left:3px solid #38bdf8;color:#e8edf7;}
-  h3{font-size:15px;margin:16px 0 6px;color:#9ec8ff;}
-  hr{border:none;border-top:1px solid #1e2a4a;margin:18px 0;}
+  h1{font-size:26px;margin:0 0 8px;color:#a1a1a6;}
+  h2{font-size:19px;margin:26px 0 10px;padding-left:10px;border-left:3px solid #007aff;color:#f5f5f7;}
+  h3{font-size:15px;margin:16px 0 6px;color:#007aff;}
+  hr{border:none;border-top:1px solid #26262a;margin:18px 0;}
   ul{margin:6px 0 10px;padding-left:22px;}
   li{margin:3px 0;}
   p{margin:6px 0;}
   blockquote{margin:8px 0;padding:8px 14px;background:rgba(56,189,248,.08);
-    border-left:3px solid #38bdf8;border-radius:6px;color:#b8c6e0;}
+    border-left:3px solid #007aff;border-radius:6px;color:#a1a1a6;}
   strong{color:#fff;}
-  .foot{max-width:860px;margin:14px auto 0;text-align:center;color:#64748b;font-size:12px;}
+  .foot{max-width:860px;margin:14px auto 0;text-align:center;color:#6e6e73;font-size:12px;}
 </style>
 </head>
 <body>

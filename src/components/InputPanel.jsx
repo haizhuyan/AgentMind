@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { parseNaturalLanguage } from '../utils/nlpParser.js'
-import { REPORT_TEMPLATES } from '../report/templates.js'
 
 /**
- * InputPanel —— 输入区
+ * InputPanel —— 搜索输入区（顶部）
  * 三种模式：
  *   keyword —— 关键词输入（联网搜索采集）
  *   natural —— 一句话自然语言需求（自动解析）
@@ -14,14 +13,7 @@ export default function InputPanel({
   onAnalyze,
   onReset,
   hasResult,
-  models = [],
-  selectedIds = [],
-  onToggleModel,
-  primaryId,
-  onSetPrimary,
-  seedKeyword,
-  templateId,
-  onSelectTemplate
+  seedKeyword
 }) {
   const [mode, setMode] = useState('keyword')
   const [value, setValue] = useState('')
@@ -108,75 +100,6 @@ export default function InputPanel({
 
   return (
     <section className="card input-panel">
-      {models.length > 0 && (
-        <div className="model-selector">
-          <span className="model-selector-label">参与协作的模型</span>
-          <div className="model-chips">
-            {models.map((m) => {
-              const active = selectedIds.includes(m.id)
-              const isPrimary = m.id === primaryId
-              return (
-                <div key={m.id} className="model-chip-wrap">
-                  <button
-                    type="button"
-                    className={`model-chip ${active ? 'active' : ''} ${isPrimary ? 'primary' : ''}`}
-                    onClick={() => onToggleModel?.(m.id)}
-                    disabled={loading}
-                    title={m.model}
-                  >
-                    <span className="model-chip-check">{active ? '✓' : ''}</span>
-                    {m.label}
-                    {isPrimary && <span className="model-chip-tag">主</span>}
-                  </button>
-                  {active && !isPrimary && (
-                    <button
-                      type="button"
-                      className="model-set-primary"
-                      onClick={() => onSetPrimary?.(m.id)}
-                      disabled={loading}
-                      title="设为主模型（负责清洗・洞察・报告・主持）"
-                    >
-                      设为主
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          {selectedIds.length > 1 && (
-            <p className="model-selector-hint">
-              分析阶段 {selectedIds.length} 个模型并行集成，验证阶段跨模型交叉复核；
-              <b>主模型</b>负责清洗・洞察・报告（默认列表首位，可点「设为主」切换）。
-            </p>
-          )}
-        </div>
-      )}
-
-      {onSelectTemplate && (
-        <div className="template-selector">
-          <span className="model-selector-label">报告模板</span>
-          <div className="template-chips">
-            {REPORT_TEMPLATES.map((t) => {
-              const active = t.id === templateId
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={`template-chip ${active ? 'active' : ''}`}
-                  onClick={() => onSelectTemplate(t.id)}
-                  disabled={loading}
-                  title={t.desc}
-                  style={active ? { borderColor: t.accent, color: t.accent } : undefined}
-                >
-                  {active && <span className="template-chip-check">✓</span>}
-                  {t.name}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
       <div className="input-mode-switch">
         <button
           className={mode === 'keyword' ? 'mode-btn active' : 'mode-btn'}

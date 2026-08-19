@@ -24,7 +24,7 @@ export default function ChartPanel({ analyze, trend }) {
       tooltip: { trigger: 'item', formatter: '{b}: {c}% ({d}%)' },
       legend: {
         bottom: 0,
-        textStyle: { color: '#64748b' },
+        textStyle: { color: '#6e6e73' },
         icon: 'circle'
       },
       series: [
@@ -35,11 +35,11 @@ export default function ChartPanel({ analyze, trend }) {
           center: ['50%', '44%'],
           avoidLabelOverlap: false,
           itemStyle: { borderColor: '#ffffff', borderWidth: 3 },
-          label: { color: '#1e293b', formatter: '{b}\n{d}%' },
+          label: { color: '#1d1d1f', formatter: '{b}\n{d}%' },
           data: [
-            { value: s.positive, name: '正面', itemStyle: { color: '#16a34a' } },
-            { value: s.negative, name: '负面', itemStyle: { color: '#dc2626' } },
-            { value: s.neutral, name: '中性', itemStyle: { color: '#2563eb' } }
+            { value: s.positive, name: '正面', itemStyle: { color: '#34c759' } },
+            { value: s.negative, name: '负面', itemStyle: { color: '#ff3b30' } },
+            { value: s.neutral, name: '中性', itemStyle: { color: '#007aff' } }
           ]
         }
       ]
@@ -56,7 +56,7 @@ export default function ChartPanel({ analyze, trend }) {
       .slice(0, 10)
       .reverse()
 
-    const colors = ['#2563eb', '#0891b2', '#16a34a', '#7c3aed', '#d97706']
+    const colors = ['#007aff', '#5856d6', '#32ade6', '#6e6e73', '#a1a1a6']
 
     wordChart.current.setOption({
       backgroundColor: 'transparent',
@@ -68,14 +68,14 @@ export default function ChartPanel({ analyze, trend }) {
       grid: { left: 78, right: 24, top: 8, bottom: 20 },
       xAxis: {
         type: 'value',
-        axisLabel: { color: '#64748b' },
-        splitLine: { lineStyle: { color: 'rgba(15,23,42,0.06)' } }
+        axisLabel: { color: '#6e6e73' },
+        splitLine: { lineStyle: { color: 'rgba(29,29,31,0.06)' } }
       },
       yAxis: {
         type: 'category',
         data: top.map((k) => k.word),
-        axisLabel: { color: '#334155' },
-        axisLine: { lineStyle: { color: 'rgba(15,23,42,0.15)' } }
+        axisLabel: { color: '#48484a' },
+        axisLine: { lineStyle: { color: 'rgba(29,29,31,0.15)' } }
       },
       series: [
         {
@@ -88,7 +88,7 @@ export default function ChartPanel({ analyze, trend }) {
             }
           })),
           barWidth: '55%',
-          label: { show: true, position: 'right', color: '#64748b', fontSize: 11 }
+          label: { show: true, position: 'right', color: '#6e6e73', fontSize: 11 }
         }
       ]
     })

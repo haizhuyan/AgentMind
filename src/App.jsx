@@ -11,6 +11,7 @@ import { runAgentFlow } from './services/agentOrchestrator.js'
 import { fetchModels } from './services/llmService.js'
 import { useDemoMode } from './services/demoMode.js'
 import { DEFAULT_TEMPLATE_ID } from './report/templates.js'
+import { MINDSPIDER_CONFIG } from './config.js'
 import { loadHistory, saveHistory, removeHistoryItem, clearHistory } from './utils/historyStore.js'
 import './App.css'
 
@@ -37,6 +38,9 @@ export default function App() {
   const [activeKeyword, setActiveKeyword] = useState('')
   // 历史分析记录（localStorage 持久化，最新在前）
   const [history, setHistory] = useState([])
+  // 采集数据源：'search'（搜索 API 聚合，默认）| 'mindspider'（AgentMind 自带爬虫组件）
+  const [collectSource, setCollectSource] = useState(MINDSPIDER_CONFIG.source)
+  const [collectPlatform, setCollectPlatform] = useState(MINDSPIDER_CONFIG.platform)
 
   const chartRef = useRef(null)
 
@@ -117,6 +121,8 @@ export default function App() {
         rawText,
         models: ordered,
         templateId,
+        collectSource,
+        collectPlatform,
         onStep: (stepId, status, detail) => {
           setStatuses((prev) => ({
             ...prev,
@@ -220,6 +226,10 @@ export default function App() {
           onReset={reset}
           hasResult={!!result}
           seedKeyword={seedKeyword}
+          collectSource={collectSource}
+          collectPlatform={collectPlatform}
+          onSourceChange={setCollectSource}
+          onPlatformChange={setCollectPlatform}
         />
 
         {/* 未开始分析时：展示多智能体流程引导卡（填充中间区域） */}

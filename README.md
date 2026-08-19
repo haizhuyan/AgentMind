@@ -14,6 +14,7 @@
 
 ### 🔍 真实数据采集
 - **多源聚合**：**Bocha 博查 AI 搜索**（Web Search / AI Search） + **Anspire 安思派 AI 搜索**，双源并行采集 → 合并去重，缓解单一搜索源偏差。
+- **MindSpider 真实爬虫（可选）**：接入 BettaFish 的 MindSpider 深度爬虫（Playwright + MediaCrawler），可在微博/小红书/抖音/快手/B站/贴吧/知乎按关键词爬取真实社媒内容作为采集数据源，输入区「数据源」一键切换（详见下文「MindSpider 爬虫接入」）。
 - **粘贴文本模式**：无需搜索 API，直接粘贴舆情文本 / 用户评论 / 社媒讨论即可分析，每行一条更佳。
 
 ### 📊 分析与报告
@@ -181,6 +182,42 @@ npm run preview # 预览构建结果
 | 企业品牌声誉分析报告 | 品牌健康度评估 |
 | 危机公关应对报告 | 突发负面事件的快速研判 |
 | 事件舆情复盘报告 | 事件平息后的完整回顾 |
+
+## 🕷️ MindSpider 爬虫接入（AgentMind 自带组件）
+
+AgentMind 自带 `mindspider/` Python 组件（源自 BettaFish 的 MindSpider 模块，Apache-2.0 许可，见 `mindspider/LICENSE`），**与 BettaFish 仓库无运行时关系**——BettaFish 可以随时删除。AgentMind 通过 Python 桥接脚本（`server/mindspider_bridge.py`）复用它的两个能力，**不需要 MySQL/PostgreSQL**：
+
+| 能力 | 实现 | 依赖 |
+|------|------|------|
+| 13 平台聚合热搜 | `BroadTopicExtraction.NewsCollector`（纯 HTTP API） | 仅 Python 依赖，无浏览器/登录 |
+| 关键词深度爬取 | `DeepSentimentCrawling.PlatformCrawler` + MediaCrawler（Playwright） | 子模块 + 浏览器 + 平台登录态 |
+
+### 启用步骤
+
+```bash
+# 1. 初始化 MediaCrawler 爬虫子模块（AgentMind 根目录执行）
+git submodule update --init --recursive
+
+# 2. 安装 Python 依赖（桥接最小集，全部有 cp313 wheel，无需 C 编译器；
+#    Python 3.13 下请勿安装 mindspider/requirements.txt 全量清单——
+#    其中的 matplotlib/wordcloud 等是 MediaCrawler 词云功能的重依赖，
+#    在本机无编译环境时会失败）
+pip install -r mindspider/requirements-bridge.txt
+playwright install chromium
+
+# 3. AgentMind/.env 启用并指定平台
+#    MINDSPIDER_ENABLED=true
+#    MINDSPIDER_PLATFORM=weibo   # weibo|xhs|dy|ks|bili|tieba|zhihu
+#    MINDSPIDER_PYTHON=python    # 使用虚拟环境时填解释器完整路径
+```
+
+### 使用与登录
+
+- 前端输入区右上角「数据源」切换为 **MindSpider 爬虫**，选择平台后开始分析；采集 Agent 的中间产物会展示爬取到的真实内容与来源。
+- **首次使用每个平台都需要扫码登录**（Playwright 弹出二维码，需在有图形界面的环境运行后端；登录态保存在 `mindspider/DeepSentimentCrawling/MediaCrawler/browser_data/`）。登录失败排查：设置 `HEADLESS = False`、删除 `browser_data/` 重新登录（详见 `mindspider/README.md`）。
+- 后端调试端点：`GET /api/mindspider/hotlist`（聚合热搜）、`GET /api/mindspider/status`（环境自检）、`POST /api/collect` 传 `{source:'mindspider'}`（爬虫采集）。
+- 爬虫模式绕开了 MindSpider 的数据库话题表：桥接脚本直接传入关键词，并把 MediaCrawler 输出强制为 JSON 文件后解析为统一的 `{texts, sources}` 结构，与搜索 API 数据源完全一致。
+- 未满足环境条件时选择 MindSpider 数据源会返回明确的中文错误提示，不影响默认的搜索 API 数据源。
 
 ## 🔐 安全说明
 

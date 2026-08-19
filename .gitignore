@@ -21,3 +21,10 @@ dist-ssr
 # Env / 密钥
 .env
 .env.local
+
+# MindSpider 爬虫子模块（git submodule，由 .gitmodules 管理；
+# 未初始化时为本地空目录）
+mindspider/DeepSentimentCrawling/MediaCrawler/
+
+# BettaFish 参考仓库（已与 AgentMind 解耦；仅作为设计参考副本时忽略）
+BettaFish/

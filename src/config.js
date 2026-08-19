@@ -56,6 +56,24 @@ export const COLLECT_CONFIG = {
 }
 
 /**
+ * MindSpider 爬虫数据源配置（AgentMind 自带组件）
+ * ---------------------------------------------------
+ * 后端通过 Python 桥接脚本复用项目根目录 mindspider/ 的爬虫模块：
+ *   - source 选择 'mindspider' 时，采集阶段用 Playwright 爬取社媒平台真实内容
+ *     （微博/小红书/抖音/B站等，需后端完成环境配置与平台登录）；
+ *   - 默认 'search'：Bocha + Anspire 搜索 API 聚合（轻量、开箱即用）。
+ * 前置条件：.env 中 MINDSPIDER_ENABLED=true（详见 README「MindSpider 爬虫接入」）。
+ */
+export const MINDSPIDER_CONFIG = {
+  // 数据源模式：'search'（默认）| 'mindspider'（真实爬虫）
+  source: 'search',
+  // 爬虫平台（后端 MINDSPIDER_PLATFORM 缺省时生效）
+  platform: 'weibo',
+  // 爬虫采集条数上限
+  maxNotes: 20
+}
+
+/**
  * 离线演示模式配置
  * ---------------------------------------------------
  * 用于「无网络 / 未配置密钥」环境下完整展示产品流程。开启后，采集、清洗、

@@ -13,11 +13,14 @@ import { collectReal } from '../services/collectService.js'
 
 /**
  * @param {string} keyword 舆情关键词
+ * @param {Object} [options]
+ * @param {string} [options.source]   数据源：'search'（默认）| 'mindspider'（真实爬虫）
+ * @param {string} [options.platform] mindspider 平台
  * @returns {Promise<{texts:string[], sources:Array, aiSummary:string}>}
  */
-export async function collectAgent(keyword) {
+export async function collectAgent(keyword, options = {}) {
   const kw = keyword.trim()
-  const result = await collectReal(kw)
+  const result = await collectReal(kw, options)
 
   if (!result?.texts || result.texts.length === 0) {
     throw new Error(`采集 Agent 未获取到「${kw}」的舆情数据，请更换关键词或检查数据源配置。`)

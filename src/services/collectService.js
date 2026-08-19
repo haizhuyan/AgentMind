@@ -15,9 +15,13 @@ import { demoCollect } from './demoData.js'
 /**
  * 按关键词采集真实舆情文本与来源。
  * @param {string} keyword
+ * @param {Object} [options]
+ * @param {string} [options.source]   数据源：'search'（默认，Bocha+Anspire）| 'mindspider'（真实爬虫）
+ * @param {string} [options.platform] mindspider 平台（weibo/xhs/dy/ks/bili/tieba/zhihu）
  * @returns {Promise<{texts:string[], sources:Array, aiSummary:string}>}
  */
-export async function collectReal(keyword) {
+export async function collectReal(keyword, options = {}) {
+  const { source = 'search', platform } = options
   // 离线演示模式：返回本地预置舆情样本，不发起网络请求
   if (isDemoMode()) {
     return demoCollect(keyword)
@@ -28,9 +32,12 @@ export async function collectReal(keyword) {
       {
         keyword,
         limit: COLLECT_CONFIG.limit,
-        freshness: COLLECT_CONFIG.freshness
+        freshness: COLLECT_CONFIG.freshness,
+        source,
+        platform
       },
-      { timeout: 40000 }
+      // 爬虫为浏览器自动化，耗时较长，给足超时
+      { timeout: source === 'mindspider' ? 30 * 60 * 1000 : 40000 }
     )
 
     const { texts, sources, aiSummary } = res.data || {}

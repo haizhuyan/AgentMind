@@ -44,7 +44,7 @@ export const AGENT_STEPS = [
  * @param {string} [params.templateId] 报告模板 id（决定章节大纲与风格）
  * @returns {Promise<Object>} 完整分析结果
  */
-export async function runAgentFlow({ keyword, rawText, models, onStep, onReport, templateId }) {
+export async function runAgentFlow({ keyword, rawText, models, onStep, onReport, templateId, collectSource, collectPlatform }) {
   const report = onStep || (() => {})
 
   // ---- 模型角色分配 ----
@@ -72,12 +72,15 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport,
       samples: raw.slice(0, 8)
     })
   } else {
-    const collected = await collectAgent(keyword)
+    const collected = await collectAgent(keyword, {
+      source: collectSource || 'search',
+      platform: collectPlatform
+    })
     raw = collected.texts
     sources = collected.sources || []
     report('collect', 'done', {
       count: raw.length,
-      mode: '联网搜索',
+      mode: collectSource === 'mindspider' ? `MindSpider 爬虫（${collectPlatform || 'weibo'}）` : '联网搜索',
       sources: sources.slice(0, 8),
       samples: raw.slice(0, 8)
     })

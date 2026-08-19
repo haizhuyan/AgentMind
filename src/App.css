@@ -393,8 +393,44 @@
 
 .input-mode-switch {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
+  align-items: center;
+}
+
+/* ---------- 数据源切换（搜索 API / MindSpider 爬虫） ---------- */
+.source-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.source-switch-label {
+  font-size: 12px;
+  color: var(--text-1);
+}
+.source-btn {
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+.source-platform-select {
+  background: var(--card-inner);
+  border: 1px solid var(--border);
+  color: var(--text-0);
+  border-radius: 20px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+}
+.source-platform-select:focus {
+  border-color: var(--accent);
+}
+.source-platform-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .mode-btn {
   background: transparent;

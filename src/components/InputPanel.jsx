@@ -7,13 +7,20 @@ import { parseNaturalLanguage } from '../utils/nlpParser.js'
  *   keyword —— 关键词输入（联网搜索采集）
  *   natural —— 一句话自然语言需求（自动解析）
  *   paste   —— 直接粘贴舆情文本（不依赖任何搜索 API）
+ * 数据源：
+ *   search      —— Bocha + Anspire 搜索 API 聚合（默认）
+ *   mindspider  —— MindSpider 真实爬虫（AgentMind 自带组件，需后端环境）
  */
 export default function InputPanel({
   loading,
   onAnalyze,
   onReset,
   hasResult,
-  seedKeyword
+  seedKeyword,
+  collectSource,
+  collectPlatform,
+  onSourceChange,
+  onPlatformChange
 }) {
   const [mode, setMode] = useState('keyword')
   const [value, setValue] = useState('')
@@ -122,6 +129,48 @@ export default function InputPanel({
         >
           粘贴文本分析
         </button>
+
+        {/* 数据源切换：搜索 API / MindSpider 真实爬虫 */}
+        {onSourceChange && (
+          <div className="source-switch">
+            <span className="source-switch-label">数据源</span>
+            <button
+              type="button"
+              className={`mode-btn source-btn ${collectSource !== 'mindspider' ? 'active' : ''}`}
+              onClick={() => onSourceChange('search')}
+              disabled={loading}
+              title="Bocha + Anspire 搜索 API 聚合（轻量、开箱即用）"
+            >
+              搜索 API
+            </button>
+            <button
+              type="button"
+              className={`mode-btn source-btn ${collectSource === 'mindspider' ? 'active' : ''}`}
+              onClick={() => onSourceChange('mindspider')}
+              disabled={loading}
+              title="MindSpider 真实爬虫（AgentMind 自带组件，需后端 Python 环境与平台登录）"
+            >
+              MindSpider 爬虫
+            </button>
+            {collectSource === 'mindspider' && (
+              <select
+                className="source-platform-select"
+                value={collectPlatform || 'weibo'}
+                onChange={(e) => onPlatformChange?.(e.target.value)}
+                disabled={loading}
+                title="爬虫平台"
+              >
+                <option value="weibo">微博</option>
+                <option value="xhs">小红书</option>
+                <option value="dy">抖音</option>
+                <option value="ks">快手</option>
+                <option value="bili">B站</option>
+                <option value="tieba">贴吧</option>
+                <option value="zhihu">知乎</option>
+              </select>
+            )}
+          </div>
+        )}
       </div>
 
       {pasteMode ? (

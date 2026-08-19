@@ -1,0 +1,6 @@
+# AgentMind 子模块：多平台爬虫核心（MindSpider 深度爬取依赖）
+# 初始化方式（在 AgentMind 根目录执行）：
+#   git submodule update --init --recursive
+[submodule "mindspider/DeepSentimentCrawling/MediaCrawler"]
+	path = mindspider/DeepSentimentCrawling/MediaCrawler
+	url = https://github.com/NanmiCoder/MediaCrawler

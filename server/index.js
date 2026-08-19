@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { bochaSearch, bochaWebSearch } from './bocha.js'
 import { anspireSearch } from './anspire.js'
 import { fetchHotList } from './hotlist.js'
+import { fetchHotListBySpider, crawlBySpider, checkMindSpiderEnv } from './mindspider.js'
 
 dotenv.config()
 
@@ -109,6 +110,14 @@ const TIANAPI = {
     process.env.TIANAPI_HOTLIST_URL || 'https://apis.tianapi.com/networkhot/index'
 }
 
+// MindSpider 爬虫桥（AgentMind 自带组件，可选启用）
+// 环境要求：Python + MediaCrawler 子模块 + 平台登录态，详见 README。
+const MINDSPIDER = {
+  enabled: process.env.MINDSPIDER_ENABLED === 'true',
+  platform: (process.env.MINDSPIDER_PLATFORM || 'weibo').toLowerCase(),
+  python: process.env.MINDSPIDER_PYTHON || 'python'
+}
+
 // 去除 HTML 标签与多余空白
 function stripHtml(str = '') {
   return String(str)
@@ -126,7 +135,8 @@ app.get('/api/health', (req, res) => {
     models: MODELS.length,
     bocha: Boolean(BOCHA.apiKey),
     anspire: Boolean(ANSPIRE.apiKey),
-    hotlist: Boolean(TIANAPI.key)
+    hotlist: Boolean(TIANAPI.key),
+    mindspider: MINDSPIDER.enabled
   })
 })
 
@@ -142,13 +152,43 @@ app.get('/api/models', (req, res) => {
 // 同时调用已配置的搜索源，合并去重后返回，缓解「单一搜索源」问题。
 // 任一源失败不影响其余源（Promise.allSettled）。
 app.post('/api/collect', async (req, res) => {
-  const { keyword, limit = 15, freshness = 'noLimit' } = req.body || {}
+  const { keyword, limit = 15, freshness = 'noLimit', source = 'search' } = req.body || {}
   const kw = String(keyword || '').trim()
   if (!kw) {
     return res.status(400).json({ error: '缺少 keyword 参数' })
   }
 
   const count = Math.min(Number(limit) || 15, 30)
+
+  // ---- 数据源：MindSpider 真实爬虫（深度爬取）----
+  // 前端传 source='mindspider' 时走此路径；默认仍为搜索 API 聚合。
+  if (source === 'mindspider') {
+    if (!MINDSPIDER.enabled) {
+      return res.status(400).json({
+        error:
+          'MindSpider 数据源未启用：请在 .env 设置 MINDSPIDER_ENABLED=true，并完成 Python 依赖与平台登录（详见 README「MindSpider 爬虫接入」）。'
+      })
+    }
+    try {
+      const crawled = await crawlBySpider({
+        platform: req.body.platform || MINDSPIDER.platform,
+        keyword: kw,
+        maxNotes: count
+      })
+      if (!crawled?.texts?.length) {
+        return res.status(404).json({ error: `MindSpider 未爬取到「${kw}」的内容` })
+      }
+      return res.json({
+        texts: crawled.texts,
+        sources: crawled.sources || [],
+        aiSummary: '',
+        providers: [{ provider: `mindspider:${req.body.platform || MINDSPIDER.platform}`, ok: true, count: crawled.texts.length }]
+      })
+    } catch (err) {
+      return res.status(502).json({ error: err.message || 'MindSpider 爬取失败' })
+    }
+  }
+
   const query = `${kw} 舆情 评价 讨论`
 
   // 组装可用搜索源任务
@@ -254,6 +294,27 @@ app.get('/api/hotlist', async (req, res) => {
     res.json({ list })
   } catch (err) {
     res.status(502).json({ error: err.message || '热搜榜获取失败' })
+  }
+})
+
+// ---------- MindSpider 爬虫桥（真实爬虫）----------
+// 13 平台聚合热搜：纯 HTTP，无数据库/浏览器依赖，可随时调用。
+app.get('/api/mindspider/hotlist', async (req, res) => {
+  try {
+    const data = await fetchHotListBySpider()
+    res.json(data)
+  } catch (err) {
+    res.status(502).json({ error: err.message || 'MindSpider 热搜获取失败' })
+  }
+})
+
+// MindSpider 环境自检：Python / mindspider 组件 / MediaCrawler 子模块状态。
+app.get('/api/mindspider/status', async (req, res) => {
+  try {
+    const info = await checkMindSpiderEnv()
+    res.json({ ...info, enabled: MINDSPIDER.enabled, platform: MINDSPIDER.platform })
+  } catch (err) {
+    res.status(502).json({ error: err.message })
   }
 })
 

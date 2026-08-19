@@ -1,0 +1,18 @@
+# MindSpider 桥接运行所需的最小依赖（AgentMind 专用）
+# ---------------------------------------------------------------
+# 仅供 server/mindspider_bridge.py 使用：
+#   - hotlist：BroadTopicExtraction.NewsCollector（纯 HTTP 聚合热搜）
+#   - crawl  ：DeepSentimentCrawling.PlatformCrawler（调度 MediaCrawler）
+#
+# 不包含 MediaCrawler 的词云/图表等重依赖（matplotlib、wordcloud、pandas 等），
+# 因此可在 Python 3.13/Windows 无 C 编译器环境直接安装（全部有 cp313 wheel）。
+# MediaCrawler 子模块自身的依赖，请在其目录下按其 README 单独安装。
+#
+# 安装：pip install -r mindspider/requirements-bridge.txt
+
+httpx>=0.27
+loguru>=0.7
+pydantic>=2.5
+pydantic-settings>=2.2
+sqlalchemy>=2.0.36
+pymysql>=1.1

@@ -124,21 +124,19 @@ async def run_hotlist(sources=None):
 # ------------------------- 深度爬虫（Playwright/MediaCrawler） -------------------------
 
 def _force_json_save_option():
-    """Monkey-patch PlatformCrawler.create_base_config：强制 SAVE_DATA_OPTION=json。
+    """Monkey-patch PlatformCrawler：全程 JSON 输出，绕开数据库。
 
-    MindSpider 原逻辑按 DB_DIALECT 决定存 db/postgres；桥接场景无需数据库，
-    改为 json 输出后由本脚本读取 MediaCrawler/data/json 的结果文件。
+    1. 补丁 create_base_config：强制 SAVE_DATA_OPTION=json；
+    2. 拦截 subprocess.run：MindSpider 的 run_crawler 会在命令行写死
+       --save_data_option db/postgres（覆盖我们的 json 配置并触发
+       数据库初始化连接 MySQL），这里把该参数强制改为 json。
     """
+    import subprocess as _sp
     from DeepSentimentCrawling import platform_crawler as pc_mod
 
-    original = pc_mod.PlatformCrawler.create_base_config
-
     def patched(self, platform, keywords, crawler_type="search", max_notes=50):
-        db_dialect = (pc_mod.config.settings.DB_DIALECT or "mysql").lower()
-        is_postgresql = db_dialect in ("postgresql", "postgres")
-
-        # 复用原实现的"文本替换"能力：先按原逻辑生成，再把 save_data_option 改成 json。
-        # 原实现对 config 文件的改写基于行匹配，这里直接临时替换其读到的内容最稳妥。
+        # 复用原实现的"文本替换"思路：直接改写 MediaCrawler 的 base_config.py，
+        # 强制 SAVE_DATA_OPTION=json（桥接场景无需数据库）。
         base_config_path = self.mediacrawler_path / "config" / "base_config.py"
         keywords_str = ",".join(keywords)
         save_data_option = "json"
@@ -171,6 +169,13 @@ def _force_json_save_option():
                 replaced = "CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 20"
             elif line.startswith("HEADLESS = "):
                 replaced = "HEADLESS = True"
+            elif line.startswith("CDP_CONNECT_EXISTING = "):
+                replaced = "CDP_CONNECT_EXISTING = False  # 桥接模式：自动启动本机 Chrome/Edge，无需手动开调试端口"
+            elif line.startswith("CDP_HEADLESS = "):
+                # 生产「无感」：默认无头执行（不弹浏览器窗口）。
+                # 首次登录需设为 False 扫码：MINDSPIDER_HEADLESS=false 运行一次。
+                headless = os.environ.get("MINDSPIDER_HEADLESS", "true").strip().lower()
+                replaced = f"CDP_HEADLESS = {headless in ('true', '1', 'yes')}  # 桥接模式：后台无感爬取"
             if replaced is not None:
                 new_lines.append(replaced)
                 if line.rstrip().endswith("("):
@@ -183,26 +188,53 @@ def _force_json_save_option():
         return True
 
     pc_mod.PlatformCrawler.create_base_config = patched
-    return is_postgresql
+
+    # 拦截 subprocess.run：把 --save_data_option 参数强制改为 json
+    _orig_run = _sp.run
+
+    def _patched_run(cmd, **kwargs):
+        if isinstance(cmd, (list, tuple)) and "--save_data_option" in list(cmd):
+            cmd = list(cmd)
+            idx = cmd.index("--save_data_option")
+            if idx + 1 < len(cmd):
+                cmd[idx + 1] = "json"
+        return _orig_run(cmd, **kwargs)
+
+    _sp.run = _patched_run
 
 
-def _latest_json_files(media_crawler_root: Path, limit: int = 5) -> list:
-    """扫描 MediaCrawler/data/json 下最近修改的 json 文件。"""
-    json_dir = media_crawler_root / "data" / "json"
-    if not json_dir.exists():
+def _latest_json_files(media_crawler_root: Path, limit: int = 10) -> list:
+    """扫描 MediaCrawler/data 下最近修改的 json 输出文件。
+
+    新版 MediaCrawler 按平台分目录输出：data/<platform>/json/search_contents_*.json。
+    优先正文（*contents*）而非评论（*comments*），同类型内取最新。
+    """
+    data_dir = media_crawler_root / "data"
+    if not data_dir.exists():
         return []
     files = []
-    for p in json_dir.rglob("*.json"):
+    for p in data_dir.rglob("*.json"):
         try:
             files.append((p.stat().st_mtime, p))
         except OSError:
             continue
-    files.sort(reverse=True)
+
+    def sort_key(item):
+        mtime, p = item
+        # contents(0) 排在 comments(1) 前；同类型按修改时间倒序
+        return (0 if "contents" in p.name else 1, -mtime)
+
+    files.sort(key=sort_key)
     return [p for _, p in files[:limit]]
 
 
-def _parse_crawl_json(payload) -> dict:
-    """宽松解析 MediaCrawler 输出 json 为 {texts, sources} 统一结构。"""
+def _parse_crawl_json(payload, keyword: str = None) -> dict:
+    """宽松解析 MediaCrawler 输出 json 为 {texts, sources} 统一结构。
+
+    MediaCrawler 的日文件会累积当天多次运行的结果（多个 source_keyword 混合），
+    因此按请求关键词过滤：优先只保留 source_keyword 精确匹配的条目；
+    若条目无 source_keyword 字段或过滤后为空，则回退返回全部。
+    """
     texts = []
     sources = []
     items = []
@@ -216,6 +248,16 @@ def _parse_crawl_json(payload) -> dict:
                 break
         if not items and isinstance(payload.get("list"), list):
             items = payload["list"]
+
+    kw = (keyword or "").strip()
+    if kw and items:
+        matched = [
+            it
+            for it in items
+            if isinstance(it, dict) and str(it.get("source_keyword") or "").strip() == kw
+        ]
+        if matched:
+            items = matched
     for it in items:
         if not isinstance(it, dict):
             continue
@@ -269,19 +311,26 @@ def run_crawl(platform: str, keyword: str, max_notes: int = 20):
     # 读取 MediaCrawler 的 json 输出
     media_root = Path(crawler.mediacrawler_path)
     parsed = {"texts": [], "sources": [], "raw": None}
+    scanned = False
     for f in _latest_json_files(media_root):
         try:
             with open(f, "r", encoding="utf-8") as fh:
                 payload = json.load(fh)
         except Exception:
             continue
-        one = _parse_crawl_json(payload)
+        scanned = True
+        one = _parse_crawl_json(payload, keyword=keyword)
         if one["texts"]:
             parsed = {"texts": one["texts"], "sources": one["sources"], "raw_file": str(f)}
             break
     if not parsed["texts"]:
+        if scanned:
+            raise RuntimeError(
+                f"爬取完成但结果为 0 条（平台 {platform} 未返回「{keyword}」的内容，"
+                "可换关键词重试，或适当增大采集条数）。"
+            )
         raise RuntimeError(
-            f"爬取完成但未找到内容（MediaCrawler 输出为空）。平台：{platform}，关键词：{keyword}"
+            f"爬取完成但未找到 MediaCrawler 输出文件。平台：{platform}，关键词：{keyword}"
         )
     return parsed
 

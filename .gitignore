@@ -22,6 +22,9 @@ dist-ssr
 .env
 .env.local
 
+# 账号体系：SQLite 数据库（用户表 + 分析记录）
+server/data/
+
 # MindSpider 爬虫子模块（git submodule，由 .gitmodules 管理；
 # 未初始化时为本地空目录）
 mindspider/DeepSentimentCrawling/MediaCrawler/

@@ -1,180 +1,63 @@
 # AgentMind · AI 多智能体舆情分析系统
 
-前端（React + Vite）+ 轻量 Node 后端的多智能体舆情分析系统。输入一个关键词、一句话需求或直接粘贴舆情文本，多个 AI 智能体依次协作完成「采集 → 清洗 → 分析 → 洞察 → 论坛协作 → 报告」全自动闭环，最终输出情感可视化图表与可导出/打印的交互式舆情分析报告。
+> **一句话需求 → 采集 · 清洗 · 分析 · 洞察 · 论坛协作 · 报告，全自动闭环。**
+>
+> 输入一个关键词、一句自然语言或直接粘贴舆情文本，六个 AI 智能体依次协作，产出带情感图表、风险研判与来源溯源的完整舆情报告——支持交互式 HTML / PDF / Markdown 一键导出，可直接作为交付物。
 
-> 架构参考自 [BettaFish（666ghj/BettaFish）](https://github.com/666ghj/BettaFish)：以 AI 联网搜索作为真实数据入口，后端代理密钥，报告可溯源、可导出为交互式 HTML 与 PDF。
+## 🎯 产品定位
 
-## ✨ 核心特性
+面向**舆情监测、品牌公关、市场研究与危机应对**场景的智能舆情工作站：
 
-### 🤖 多智能体流水线
-- **6 步协作闭环**：采集 → 清洗 → 分析 → 洞察 → 论坛协作 → 报告，实时展示每步状态与中间产物。
-- **多模型协作**：支持配置最多 **12 个 LLM**（OpenAI 兼容接口），分析阶段各模型**并行独立分析后集成**，验证阶段**跨模型交叉复核**。主模型负责清洗 / 洞察 / 报告 / 主持，其余模型参与并行分析与验证。
-- **论坛协作 (ForumEngine)**：参考 BettaFish 的 ForumEngine——「主持人」模型引导「验证 Agent」进行**多轮交叉复核**，逐轮收敛情感占比、归纳共识与分歧、提出追问，最终结论完整可溯源。
-- **本地情感中间件**：纯 JS 中文情感词典（正/负情感词 + 否定词翻转 + 程度副词加权），**零成本、瞬时**对文本逐条打分，作为「校准锚点」与 LLM 结果按权重融合，提升情感分析的稳健性。
+- 让非技术用户也能像分析师一样工作：不用写爬虫、不用懂 prompt，输入即得报告
+- 每一个结论都**可溯源**（引用标注 → 来源链接）、每一个中间步骤都**看得见**（智能体产物可展开查看）
+- 从"搜一下"到"交付报告"只隔一次点击
 
-### 🔍 真实数据采集
-- **多源聚合**：**Bocha 博查 AI 搜索**（Web Search / AI Search） + **Anspire 安思派 AI 搜索**，双源并行采集 → 合并去重，缓解单一搜索源偏差。
-- **MindSpider 真实爬虫（可选）**：接入 BettaFish 的 MindSpider 深度爬虫（Playwright + MediaCrawler），可在微博/小红书/抖音/快手/B站/贴吧/知乎按关键词爬取真实社媒内容作为采集数据源，输入区「数据源」一键切换（详见下文「MindSpider 爬虫接入」）。
-- **粘贴文本模式**：无需搜索 API，直接粘贴舆情文本 / 用户评论 / 社媒讨论即可分析，每行一条更佳。
+## ✨ 核心功能
 
-### 📊 分析与报告
-- **三种输入模式**：关键词输入（联网搜索）、自然语言对话（自动解析关键词与维度）、粘贴文本分析。
-- **4 套报告模板**：通用舆情分析 / 企业品牌声誉 / 危机公关应对 / 事件舆情复盘，每套预设章节大纲与主题色，引导模型产出结构化报告。
-- **报告 IR 化**：Markdown 报告统一解析为 Document IR（中间表示），支持多格式渲染（交互式 HTML / 打印 PDF / 纯文本）。
-- **流式报告生成**：通过 SSE 实时回传 token，前端展示 DeepSeek `reasoning_content` 思考过程 + 正文撰写过程。
-- **报告溯源**：引用事实处标注 `[n]`，对应可点击的来源列表。
+### 1. 一句话输入，六个智能体全自动闭环
 
-### 📈 数据可视化
-- **ECharts 图表**：情感分布饼图 + 关键词热度 Top10 横向柱状图（深色科技风）。
-- **趋势推演**：基于情感占比与风险数量的本地风险等级评估（低/中/高），输出情绪走向（向好/平稳/恶化）与预测。
-
-### 📤 多格式导出
-- **交互式 HTML**：一键导出自包含的离线 HTML（内嵌 ECharts CDN + 完整样式 + 图表脚本）。
-- **PDF 导出**：前端使用 html2pdf.js 直接生成 A4 电子版 PDF 文件并下载（非调用打印机）。
-- **复制报告**：一键复制 Markdown 全文。
-
-### 🔥 实时热搜榜
-- **天行数据全网热搜**：首页展示实时热搜榜单，点击任一热点一键填入分析。
-
-### 🎬 离线演示模式
-- **零依赖演示**：页头开关一键开启「离线演示模式」，**无需网络、无需后端、无需任何密钥**即可完整跑通「采集 → 清洗 → 分析 → 洞察 → 论坛 → 报告」全流程。
-- **本地模拟返回**：开启后，采集 / LLM / 热搜 / 模型列表等所有网络请求由本地预置数据（`src/services/demoData.js`）按各智能体的输出结构模拟返回，流水线动画、情感图表、流式报告与导出（HTML / PDF）全部照常运行。
-- **状态记忆**：开关状态经 `localStorage` 记忆，刷新后保持；适合断网现场、路演与教学演示。
-
-### 🔐 安全架构
-- 所有密钥仅存于后端 `.env`，浏览器与打包产物中不含任何密钥。
-- LLM 与采集请求均由后端代理转发，前端只与本地 `/api` 通信。
-- 支持 Render 等云平台一键部署（`render.yaml` Blueprint），后端托管前端静态文件（前后端合一）。
-
-## 📁 项目结构
+六步流水线各司其职，实时展示每一步的运行状态与真实中间产物：
 
 ```
-server/                              # 轻量 Node 后端（密钥安全 + 真实采集）
-├── index.js                         # Express 服务：/api/collect、/api/llm、/api/llm/stream、/api/models、/api/hotlist、/api/health
-├── bocha.js                         # Bocha 博查 AI 搜索封装（Web Search + AI Search）
-├── anspire.js                       # Anspire 安思派 AI 搜索封装（第二数据源）
-└── hotlist.js                       # 天行数据全网热搜榜
-src/
-├── config.js                        # 前端配置（仅 API 基址与功能开关，无密钥）
-├── App.jsx                          # 根组件（多模型选择、模板切换、热搜联动）
-├── agents/                          # 智能体
-│   ├── collectAgent.js              # 采集 Agent（调用后端多源搜索）
-│   ├── cleanAgent.js                # 清洗 Agent（本地预清洗 + 分批 LLM 清洗）
-│   ├── analyzeAgent.js              # 分析 Agent（多模型并行集成 + 本地情感校准）
-│   ├── insightAgent.js              # 洞察 Agent（趋势 / 风险 / 诉求 / 成因）
-│   ├── reportAgent.js               # 报告 Agent（流式生成 + 模板大纲注入）
-│   ├── debateService.js             # 单轮交叉验证（兼容旧行为，多模型并行复核）
-│   ├── forumService.js              # 多轮论坛协作（ForumEngine，主持人引导收敛）
-│   └── forumHost.js                 # 论坛主持人（归纳共识/分歧，驱动下一轮追问）
-├── services/
-│   ├── llmService.js                # 大模型调用（后端代理，含流式 SSE 客户端）
-│   ├── collectService.js            # 采集服务（/api/collect 代理）
-│   ├── hotlistService.js            # 热搜服务（/api/hotlist 代理）
-│   ├── demoMode.js                  # 离线演示模式开关（localStorage 持久化 + 订阅）
-│   ├── demoData.js                  # 离线演示数据 + 模拟 LLM/采集/热搜返回
-│   └── agentOrchestrator.js         # 智能体调度器（流水线编排 + onStep/onReport 回调）
-├── utils/
-│   ├── nlpParser.js                 # 自然语言需求解析（关键词 + 维度提取）
-│   ├── trendPredict.js              # 趋势推演 / 风险等级评估（本地计算）
-│   ├── localSentiment.js            # 本地中文情感分析中间件（词典法）
-│   ├── htmlReport.js                # 交互式 HTML + 打印视图生成
-│   └── pdfExport.js                 # 前端 PDF 导出（html2pdf.js）
-├── report/
-│   ├── templates.js                 # 报告模板库（通用 / 品牌 / 危机 / 复盘）
-│   └── ir.js                        # 报告 IR 中间表示（解析 / 校验 / 渲染）
-└── components/
-    ├── InputPanel.jsx               # 输入区（三模式 + 模型选择 + 模板切换）
-    ├── AgentFlow.jsx                # 智能体运行状态 + 中间产物可展开查看
-    ├── ChartPanel.jsx               # 可视化图表（情感饼图 + 关键词柱状图）
-    ├── ReportPanel.jsx              # 报告展示（Markdown 渲染 + 导出 + 溯源）
-    └── HotList.jsx                  # 实时热搜榜组件
+① 采集 → ② 清洗 → ③ 分析 → ④ 洞察 → ⑤ 论坛协作 → ⑥ 报告
 ```
 
-## 🚀 快速开始
+| 智能体 | 职责 | 中间产物（界面可展开查看） |
+|--------|------|--------------------------|
+| 采集 Agent | 获取舆情原始文本与来源 | 来源链接、样本列表 |
+| 清洗 Agent | 去重、去广告、去无效短句 | 清洗前后条数对比、样本 |
+| 分析 Agent | 情感分析、关键词与观点提取 | 情感占比、热度 Top10、观点 |
+| 洞察 Agent | 趋势、风险、诉求与成因挖掘 | 风险清单、核心诉求、成因 |
+| 论坛协作 | 多模型交叉验证、结论收敛 | 逐轮发言、共识/分歧、溯源 |
+| 报告 Agent | 整合生成结构化报告 | 实时流式生成（思考+撰写） |
 
-### 1. 安装依赖
+### 2. 三种输入方式，覆盖所有工作现场
 
-```bash
-npm install
-```
-
-### 2. 配置密钥
-
-复制 `.env.example` 为 `.env`，填入你自己的密钥：
-
-```bash
-cp .env.example .env
-```
-
-**必填项**（至少配置一个 LLM + 一个搜索源）：
-
-| 配置 | 说明 |
-|------|------|
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | 大模型 API（OpenAI Chat Completions 兼容），必填 |
-| `BOCHA_API_KEY` | Bocha 博查 AI 搜索密钥（[申请](https://open.bochaai.com/)） |
-| `ANSPIRE_API_KEY` | Anspire 安思派 AI 搜索密钥（与 Bocha 至少配一个） |
-
-**可选项**：
-
-| 配置 | 说明 |
-|------|------|
-| `LLM2_*` ~ `LLM12_*` | 额外模型槽位，配置 2 个以上时启用多模型并行分析 + 跨模型验证 |
-| `LLM_PRIMARY` | 指定主模型槽位 id（如 `llm4`），负责清洗/洞察/报告/主持 |
-| `LLM_TIMEOUT` | LLM 单次调用超时毫秒数（默认 100000） |
-| `BOCHA_MODE` | `web`（Web Search，默认，便宜够用）或 `ai`（AI Search，带总结） |
-| `ANSPIRE_REGION_MODE` | `0` 国内 / `1` 海外 / `2` 混合（默认 0） |
-| `TIANAPI_KEY` | 天行数据全网热搜密钥（[申请](https://www.tianapi.com/)） |
-| `SERVER_PORT` | 后端端口（默认 3100） |
-
-> `.env` 已被 `.gitignore` 忽略，不会提交到仓库。所有密钥仅后端可见。
-
-### 3. 启动
-
-同时启动后端与前端（推荐）：
-
-```bash
-npm run dev:all
-```
-
-- 前端：http://localhost:5173
-- 后端：http://localhost:3100
-
-也可分别启动：
-
-```bash
-npm run server  # 仅后端
-npm run dev     # 仅前端（需后端已运行）
-```
-
-### 4. 构建与部署
-
-```bash
-npm run build   # Vite 构建到 dist/
-npm run preview # 预览构建结果
-```
-
-后端自动托管 `dist/` 静态文件并处理 SPA 路由兜底，单个 `node server/index.js` 即可上线。Render 用户可直接使用 Blueprint 部署（见 `render.yaml`）。
-
-## 🔧 使用方式
-
-### 三种输入模式
-
-| 模式 | 说明 | 数据来源 |
+| 模式 | 用法 | 数据来源 |
 |------|------|----------|
-| **关键词输入** | 输入 1-20 字关键词 | 后端多源联网搜索（Bocha + Anspire） |
-| **自然语言对话** | 一句话描述需求，自动解析关键词与分析维度 | 同上 |
-| **粘贴文本** | 直接粘贴舆情文本、评论、社媒讨论 | 不依赖任何搜索 API |
+| **关键词输入** | 输入 1-20 字关键词，如"新能源汽车" | 多源联网搜索 |
+| **自然语言对话** | 一句话描述需求，自动解析核心对象与分析维度 | 多源联网搜索 |
+| **粘贴文本** | 直接粘贴评论/帖子/讨论，每行一条 | 不依赖任何搜索 API |
 
-### 多模型协作
+### 3. 多模型协作，让结论经得起推敲
 
-配置 2+ 个 LLM 模型后：
-- 前端展示模型选择器，可勾选参与协作的模型；
-- 分析阶段所有选中模型并行独立分析，结果集成（情感取均值、关键词取最大权重、观点去重合并）；
-- 验证阶段优先用非主模型做跨模型复核（论坛协作模式可获得更稳健的结论）。
+- 支持配置最多 **12 个 LLM**（OpenAI 兼容：DeepSeek / 智谱 GLM / 通义千问 / Kimi / MiniMax…）
+- **并行集成**：分析阶段所有选中模型独立分析后融合（情感取均值、关键词取最大权重、观点去重合并）
+- **论坛协作（ForumEngine）**：主模型担任主持人，引导验证模型**多轮交叉复核**——逐轮收敛情感占比、归纳共识与分歧、提出追问，结论完整可溯源
+- **本地情感中间件**：纯 JS 中文情感词典瞬时打分，作为"校准锚点"与 LLM 结果按权重融合，零成本提升稳健性
 
-### 报告模板
+### 4. 真实数据源，双轨采集
 
-4 套模板可在输入区切换，每套有独立的章节大纲与主题色：
+- **搜索 API 聚合**：Bocha 博查 + Anspire 安思派双源并行采集、合并去重，缓解单一搜索源偏差
+- **MindSpider 真实爬虫**：在微博/小红书/抖音/快手/B站/贴吧/知乎按关键词**深度爬取真实社媒内容**（Playwright 浏览器自动化），输入区一键切换数据源
+- **实时热搜榜**：天行数据全网热搜，点击热点即可一键分析
+
+### 5. 可视化与趋势推演
+
+- 情感分布饼图 + 关键词热度 Top10 柱状图（ECharts）
+- 本地风险等级评估（低/中/高）+ 情绪走向预测（向好/平稳/恶化）
+
+### 6. 四套行业报告模板，报告即交付物
 
 | 模板 | 适用场景 |
 |------|----------|
@@ -183,76 +66,136 @@ npm run preview # 预览构建结果
 | 危机公关应对报告 | 突发负面事件的快速研判 |
 | 事件舆情复盘报告 | 事件平息后的完整回顾 |
 
-## 🕷️ MindSpider 爬虫接入（AgentMind 自带组件）
+- **流式生成**：SSE 实时回传，撰写过程 + DeepSeek 思考链全程可见
+- **报告 IR 化**：Markdown 解析为结构化中间表示，统一驱动多格式渲染
+- **报告溯源**：事实处标注 `[n]`，对应可点击来源列表
+- **多格式导出**：自包含交互式 HTML / A4 PDF / 纯文本复制
 
-AgentMind 自带 `mindspider/` Python 组件（源自 BettaFish 的 MindSpider 模块，Apache-2.0 许可，见 `mindspider/LICENSE`），**与 BettaFish 仓库无运行时关系**——BettaFish 可以随时删除。AgentMind 通过 Python 桥接脚本（`server/mindspider_bridge.py`）复用它的两个能力，**不需要 MySQL/PostgreSQL**：
+### 7. 账号体系与历史回看
 
-| 能力 | 实现 | 依赖 |
-|------|------|------|
-| 13 平台聚合热搜 | `BroadTopicExtraction.NewsCollector`（纯 HTTP API） | 仅 Python 依赖，无浏览器/登录 |
-| 关键词深度爬取 | `DeepSentimentCrawling.PlatformCrawler` + MediaCrawler（Playwright） | 子模块 + 浏览器 + 平台登录态 |
+- **产品落地页**：产品介绍 + 注册 / 登录（或「离线体验」免登录演示）
+- **记录自动保存**：登录后每次完成的分析自动保存完整结果到账号（SQLite 落库）
+- **一键回看**：「我的分析记录」面板可随时回看历史报告（图表/报告/来源原样重现，无需重跑）
 
-### 启用步骤
+### 8. 离线演示模式
+
+无需网络、无需后端、无需任何密钥，一键开启本地预置数据演示——完整跑通六步流水线、图表、流式报告与导出，适合路演、教学与断网现场。
+
+## 🎬 典型使用场景
+
+| 场景 | 用法 |
+|------|------|
+| **舆情监测** | 输入品牌/事件关键词 → 双源采集 + 真实爬虫 → 情感分布与热度趋势 |
+| **危机公关** | 选「危机公关应对报告」模板 → 快速研判风险等级与核心诉求 → 导出 PDF 上报 |
+| **品牌声誉** | 选「企业品牌声誉分析报告」模板 → 多模型交叉验证 → 声誉健康度结论 |
+| **事件复盘** | 事件平息后选「事件舆情复盘报告」模板 → 完整回顾 + 结论溯源 |
+
+## 🚀 快速开始
 
 ```bash
-# 1. 初始化 MediaCrawler 爬虫子模块（AgentMind 根目录执行）
-git submodule update --init --recursive
-
-# 2. 安装 Python 依赖（桥接最小集，全部有 cp313 wheel，无需 C 编译器；
-#    Python 3.13 下请勿安装 mindspider/requirements.txt 全量清单——
-#    其中的 matplotlib/wordcloud 等是 MediaCrawler 词云功能的重依赖，
-#    在本机无编译环境时会失败）
-pip install -r mindspider/requirements-bridge.txt
-playwright install chromium
-
-# 3. AgentMind/.env 启用并指定平台
-#    MINDSPIDER_ENABLED=true
-#    MINDSPIDER_PLATFORM=weibo   # weibo|xhs|dy|ks|bili|tieba|zhihu
-#    MINDSPIDER_PYTHON=python    # 使用虚拟环境时填解释器完整路径
+npm install            # 1. 安装依赖
+cp .env.example .env   # 2. 复制环境变量模板，填入密钥（见下表）
+npm run dev:all        # 3. 同时启动前后端
+# 前端 http://localhost:5173 → 后端 http://localhost:3100
 ```
 
-### 使用与登录
+### 必填密钥（.env）
 
-- 前端输入区右上角「数据源」切换为 **MindSpider 爬虫**，选择平台后开始分析；采集 Agent 的中间产物会展示爬取到的真实内容与来源。
-- **首次使用每个平台都需要扫码登录**（Playwright 弹出二维码，需在有图形界面的环境运行后端；登录态保存在 `mindspider/DeepSentimentCrawling/MediaCrawler/browser_data/`）。登录失败排查：设置 `HEADLESS = False`、删除 `browser_data/` 重新登录（详见 `mindspider/README.md`）。
-- 后端调试端点：`GET /api/mindspider/hotlist`（聚合热搜）、`GET /api/mindspider/status`（环境自检）、`POST /api/collect` 传 `{source:'mindspider'}`（爬虫采集）。
-- 爬虫模式绕开了 MindSpider 的数据库话题表：桥接脚本直接传入关键词，并把 MediaCrawler 输出强制为 JSON 文件后解析为统一的 `{texts, sources}` 结构，与搜索 API 数据源完全一致。
-- 未满足环境条件时选择 MindSpider 数据源会返回明确的中文错误提示，不影响默认的搜索 API 数据源。
+| 配置 | 说明 |
+|------|------|
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | 大模型 API（OpenAI Chat Completions 兼容），必填 |
+| `BOCHA_API_KEY` 或 `ANSPIRE_API_KEY` | 搜索数据源（Bocha 博查 / Anspire 安思派，至少一个） |
 
-## 🔐 安全说明
+### 可选配置（功能增强）
 
-- 所有密钥仅存于后端 `.env`，浏览器与打包产物中不含任何密钥。
-- LLM 与采集请求均由后端代理转发，前端只与本地 `/api` 通信。
-- 开发环境通过 Vite 代理转发 `/api` 到后端，生产环境由后端直接托管前端静态文件。
-- 生产部署时，请将后端独立部署，并通过反向代理暴露 `/api`。
+| 配置 | 效果 |
+|------|------|
+| `LLM2_*` ~ `LLM12_*` | 多模型协作（2 个以上启用并行集成 + 交叉复核） |
+| `LLM_PRIMARY` | 指定主模型（负责清洗/洞察/报告/主持） |
+| `TIANAPI_KEY` | 右侧实时热搜榜 |
+| `JWT_SECRET` | 账号体系签名密钥（**生产必改**随机长串） |
+| `MINDSPIDER_ENABLED=true` | 启用真实社媒爬虫数据源（见下节） |
+
+## 🕷️ MindSpider 真实爬虫（可选数据源）
+
+AgentMind 自带 `mindspider/` Python 组件，可在 7 大社媒平台按关键词深度爬取真实内容，**无需 MySQL**：
+
+```bash
+git submodule update --init --recursive                    # 拉取 MediaCrawler 爬虫子模块
+pip install -r mindspider/requirements-bridge.txt          # 桥接最小依赖（含 cp313 wheel）
+playwright install chromium                                # 浏览器驱动
+# .env: MINDSPIDER_ENABLED=true  MINDSPIDER_PLATFORM=weibo
+```
+
+- 前端输入区右上角「数据源」切换为 MindSpider 爬虫，选择平台后开始分析
+- **生产「无感」模式**：登录用户提交爬虫后任务进入**后台队列**（单工执行、不弹浏览器窗口），前端轮询状态，完成后自动通知（「✅ 爬虫任务完成」横幅）并接续流水线；任务 API：`POST /api/crawl/job`、`GET /api/crawl/job/:id`、`GET /api/crawl/status`
+- **首次登录（一次性）**：`.env` 设 `MINDSPIDER_HEADLESS=false` 启动，提交一次任务在弹出的 Chrome 中扫码；登录态保存在本机，之后改回 `MINDSPIDER_HEADLESS=true`（默认）全程无窗口
+- 调试端点：`GET /api/mindspider/hotlist`（13 平台聚合热搜）、`GET /api/mindspider/status`（环境自检）
+
+### 生产部署架构
+
+```
+浏览器用户 ──► Node 应用（任意云主机/容器）
+                  │  POST /api/crawl/job（立即返回任务 id）
+                  ▼
+             爬虫任务队列（单工；多实例部署换 Redis/BullMQ）
+                  ▼
+         Python 桥接 → Chrome/Edge CDP 无头模式
+                  ▼
+     平台登录态（browser_data，爬虫机本地，需持久化）
+```
+
+- 爬虫必须跑在**装有 Chrome/Edge 且已扫码登录的机器**上；Web 应用与爬虫机可分离部署（`MINDSPIDER_ROOT` 指向爬虫机上的组件路径）
+- 队列并发=1：同一时间只开一个浏览器，避免资源争抢与风控；水平扩展 = 一台爬虫机一个 worker
+- 登录态每 1-2 周巡检一次（`MINDSPIDER_HEADLESS=false` 重新扫码）
 
 ## 📦 技术栈
 
 | 层面 | 技术 |
 |------|------|
-| 前端框架 | React 18 + Vite 5 |
-| 图表库 | ECharts 5 |
-| PDF 导出 | html2pdf.js |
-| 后端 | Express 4 (Node.js) |
-| LLM 协议 | OpenAI Chat Completions 兼容（支持 DeepSeek / 智谱 GLM / 通义千问 / Kimi / SiliconFlow 等） |
-| 数据源 | Bocha 博查 AI 搜索 / Anspire 安思派 AI 搜索 / 天行数据热搜 |
-| 部署 | Render Blueprint / 任意 Node.js 环境 |
+| 前端 | React 18 + Vite 5 |
+| 图表 | ECharts 5 |
+| 导出 | html2pdf.js / 交互式 HTML |
+| 后端 | Express 4（Node.js ≥ 22.5，使用内置 `node:sqlite`） |
+| 账号 | scrypt 密码哈希 + HS256 JWT（零外部依赖） |
+| 数据源 | Bocha / Anspire / 天行热搜 / MindSpider（Playwright + MediaCrawler） |
+| LLM | OpenAI Chat Completions 兼容（DeepSeek / GLM / Qwen / Kimi / MiniMax…） |
 
-## 🏗️ 流水线详解
+## 🚢 部署
 
-```
-用户输入（关键词 / 自然语言 / 粘贴文本）
-    │
-    ▼
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│ ① 采集   │ →  │ ② 清洗   │ →  │ ③ 分析   │ →  │ ④ 洞察   │ →  │ ⑤ 论坛   │ →  │ ⑥ 报告   │
-│ Agent    │    │ Agent    │    │ Agent    │    │ Agent    │    │ 协作     │    │ Agent    │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
-    │                │               │               │               │               │
-    ▼                ▼               ▼               ▼               ▼               ▼
-Bocha+Anspire    本地预清洗      多模型并行      趋势/风险/       主持人引导      流式生成
-多源聚合         去重/去广告      集成分析        诉求/成因       多轮交叉复核     Markdown报告
-                 分批LLM清洗     本地情感校准                     结论收敛         IR化 + 导出
+```bash
+npm run build                # Vite 构建到 dist/
+node server/index.js         # 后端托管 dist/，单进程即可上线
 ```
 
-每个步骤完成后通过 `onStep` 回调实时更新 UI，前端可展开每一步的**真实中间产物**（采集来源链接、清洗前后对比、各模型分析结果、洞察风险点、论坛发言记录、辩论分歧等），让多智能体协作过程「看得见」。
+- **Render**：仓库自带 `render.yaml` Blueprint，一键部署
+- **Docker**：仓库自带 `Dockerfile` + `docker-compose.yml`
+- 生产注意：`.env` 设置随机 `JWT_SECRET`；Node ≥ 22.5；爬虫数据源需在**有图形界面的机器**上运行并完成首次扫码登录；建议通过反向代理暴露 `/api` 并加 HTTPS
+
+## 🔐 安全说明
+
+- 所有密钥仅存于后端 `.env`，浏览器与打包产物不含任何密钥
+- LLM 与采集请求均由后端代理转发，前端只与本地 `/api` 通信
+- 账号密码 scrypt 加盐哈希存储；分析记录按用户隔离
+
+## 📁 项目结构（开发者）
+
+```
+server/                 # Node 后端：API 代理 + 账号 + 记录 + 爬虫桥
+├── index.js            # 路由：/api/collect /api/llm /api/auth /api/records ...
+├── auth.js             # scrypt + JWT + requireAuth
+├── db.js               # node:sqlite（users / records 表）
+├── bocha.js anspire.js hotlist.js   # 搜索/热搜封装
+└── mindspider.js + mindspider_bridge.py  # MindSpider 爬虫桥（Node ↔ Python）
+mindspider/             # 自带 Python 爬虫组件（MediaCrawler 子模块）
+src/
+├── App.jsx             # 路由守卫 + 工作台（左中右三栏）
+├── agents/             # 六智能体（采集/清洗/分析/洞察/论坛/报告）
+├── services/           # 编排调度 + LLM/采集/账号 API + 离线演示
+├── components/         # LandingPage / InputPanel / AgentFlow / ChartPanel / ReportPanel / RecordsPanel / HotList ...
+├── report/             # 4 套报告模板 + IR 中间表示
+└── utils/              # NLP 解析 / 趋势推演 / 本地情感词典 / HTML / PDF 导出
+```
+
+---
+

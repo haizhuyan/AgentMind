@@ -15,6 +15,10 @@ import { markdownToIR } from '../report/ir.js'
  * ---------------------------------------------------
  * 按「采集 → 清洗 → 分析 → 洞察 → (辩论) → 报告」顺序
  * 编排流水线，通过 onStep 回调实时反馈执行状态。
+ *
+ * 支持断点续跑：传入 resume = { pipeline, stepDetails } 时，
+ * 已完成步骤直接复用已保存的中间产物（跳过重跑），
+ * 从第一个未完成步骤继续执行。
  */
 
 // 智能体步骤定义（供 UI 展示）
@@ -33,93 +37,160 @@ export const AGENT_STEPS = [
  * @param {string} params.keyword 舆情关键词
  * @param {string} [params.rawText] 用户直接粘贴的舆情文本（提供则跳过联网采集）
  * @param {Array<{id:string, label:string}>} [params.models] 参与协作的模型列表。
- *        - 第一个为「主模型」，负责清洗、洞察、报告；
- *        - 全部模型参与「分析」阶段（并行集成）；
- *        - 验证阶段优先用非主模型做跨模型交叉复核（仅一个模型时自评）。
- * @param {(stepId:string, status:string, detail?:Object)=>void} params.onStep 步骤回调
- *        status: running | done | failed | skipped
- *        detail: 该步骤的中间产物（供 UI 展开查看）
+ * @param {Object} [params.resume] 断点续跑状态 { pipeline, stepDetails }
+ * @param {(stepId:string, status:string, detail?:Object, pipeline?:Object)=>void} params.onStep
+ *        步骤回调；pipeline 为当前累计的流水线快照（供增量持久化）
  * @param {(evt:string, payload:any)=>void} [params.onReport] 报告流式回调
- *        evt: 'token' | 'reasoning'
- * @param {string} [params.templateId] 报告模板 id（决定章节大纲与风格）
+ * @param {string} [params.templateId] 报告模板 id
+ * @param {string} [params.collectSource] 数据源 search | mindspider
+ * @param {string} [params.collectPlatform] mindspider 平台
  * @returns {Promise<Object>} 完整分析结果
  */
-export async function runAgentFlow({ keyword, rawText, models, onStep, onReport, templateId, collectSource, collectPlatform }) {
+export async function runAgentFlow({
+  keyword,
+  rawText,
+  models,
+  onStep,
+  onReport,
+  templateId,
+  collectSource,
+  collectPlatform,
+  resume
+}) {
   const report = onStep || (() => {})
 
   // ---- 模型角色分配 ----
   const selected = Array.isArray(models) && models.length ? models : [undefined]
   const primary = selected[0] // 主模型：清洗 / 洞察 / 报告
-  // 验证模型：优先取非主模型（跨模型交叉验证）；仅一个模型时退化为自评
   const validators = selected.length > 1 ? selected.slice(1) : selected
-
-  // 取模型展示名（用于运行中实时展示"正在协作的模型"）
   const labelOf = (m) => m?.label || '默认模型'
 
-  // ---- 1. 采集 ----
-  report('collect', 'running')
-  let raw
-  let sources = []
-  if (rawText && rawText.trim()) {
-    // 「粘贴文本」模式：将用户文本按行/句切分为样本，不依赖任何搜索 API
-    raw = rawText
-      .split(/\r?\n|(?<=[。！？!?])/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 1)
-    report('collect', 'done', {
-      count: raw.length,
-      mode: '粘贴文本',
-      samples: raw.slice(0, 8)
-    })
-  } else {
-    const collected = await collectAgent(keyword, {
-      source: collectSource || 'search',
-      platform: collectPlatform
-    })
-    raw = collected.texts
-    sources = collected.sources || []
-    report('collect', 'done', {
-      count: raw.length,
-      mode: collectSource === 'mindspider' ? `MindSpider 爬虫（${collectPlatform || 'weibo'}）` : '联网搜索',
-      sources: sources.slice(0, 8),
-      samples: raw.slice(0, 8)
-    })
+  // ---- 断点续跑：恢复已保存的流水线快照 ----
+  const saved = resume?.pipeline || {}
+  const savedDetails = resume?.stepDetails || {}
+  const pipeline = {
+    raw: Array.isArray(saved.raw) ? saved.raw : null,
+    sources: Array.isArray(saved.sources) ? saved.sources : [],
+    cleaned: Array.isArray(saved.cleaned) ? saved.cleaned : null,
+    analyze: saved.analyze && typeof saved.analyze === 'object' ? saved.analyze : null,
+    insight: saved.insight && typeof saved.insight === 'object' ? saved.insight : null,
+    debate: saved.debate && typeof saved.debate === 'object' ? saved.debate : null,
+    reportText: typeof saved.reportText === 'string' ? saved.reportText : ''
   }
 
-  // ---- 2. 清洗 ----
-  report('clean', 'running', { _running: true, model: labelOf(primary), before: raw.length })
-  const cleaned = await cleanAgent(raw, primary)
-  report('clean', 'done', {
-    before: raw.length,
-    after: cleaned.length,
-    samples: cleaned.slice(0, 6)
-  })
+  // 回传累计快照 + 已完成步骤的已保存详情
+  const emit = (stepId, status, detail) => {
+    report(stepId, status, detail, { ...pipeline })
+  }
+  const savedDetailOf = (stepId, fallback) => savedDetails[stepId]?.detail ?? fallback
 
-  // ---- 3. 分析（多模型协作：全部选中模型并行独立分析后集成）----
-  report('analyze', 'running', { _running: true, models: selected.map(labelOf) })
-  const analyze = await analyzeAgent(cleaned, selected)
-  report('analyze', 'done', {
-    sentiment: analyze.sentiment,
-    keywords: (analyze.keywords || []).slice(0, 10),
-    opinions: analyze.opinions || [],
-    contributors: analyze.contributors || []
-  })
+  // ---- 1. 采集 ----
+  if (pipeline.raw) {
+    emit('collect', 'done', savedDetailOf('collect', { count: pipeline.raw.length, mode: '续跑恢复', samples: pipeline.raw.slice(0, 8) }))
+  } else {
+    report('collect', 'running')
+    let raw
+    if (rawText && rawText.trim()) {
+      raw = rawText
+        .split(/\r?\n|(?<=[。！？!?])/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 1)
+      pipeline.raw = raw
+      emit('collect', 'done', {
+        count: raw.length,
+        mode: '粘贴文本',
+        samples: raw.slice(0, 8)
+      })
+    } else {
+      const collected = await collectAgent(keyword, {
+        source: collectSource || 'search',
+        platform: collectPlatform
+      })
+      raw = collected.texts
+      pipeline.raw = raw
+      pipeline.sources = collected.sources || []
+      emit('collect', 'done', {
+        count: raw.length,
+        mode: collectSource === 'mindspider' ? `MindSpider 爬虫（${collectPlatform || 'weibo'}）` : '联网搜索',
+        sources: pipeline.sources.slice(0, 8),
+        samples: raw.slice(0, 8)
+      })
+    }
+  }
+  const raw = pipeline.raw
+  const sources = pipeline.sources
+
+  // ---- 2. 清洗 ----
+  if (pipeline.cleaned) {
+    emit('clean', 'done', savedDetailOf('clean', { before: raw.length, after: pipeline.cleaned.length, samples: pipeline.cleaned.slice(0, 6) }))
+  } else {
+    report('clean', 'running', { _running: true, model: labelOf(primary), before: raw.length })
+    pipeline.cleaned = await cleanAgent(raw, primary)
+    emit('clean', 'done', {
+      before: raw.length,
+      after: pipeline.cleaned.length,
+      samples: pipeline.cleaned.slice(0, 6)
+    })
+  }
+  const cleaned = pipeline.cleaned
+
+  // ---- 3. 分析 ----
+  if (pipeline.analyze) {
+    emit('analyze', 'done', savedDetailOf('analyze', {
+      sentiment: pipeline.analyze.sentiment,
+      keywords: (pipeline.analyze.keywords || []).slice(0, 10),
+      opinions: pipeline.analyze.opinions || [],
+      contributors: pipeline.analyze.contributors || []
+    }))
+  } else {
+    report('analyze', 'running', { _running: true, models: selected.map(labelOf) })
+    pipeline.analyze = await analyzeAgent(cleaned, selected)
+    emit('analyze', 'done', {
+      sentiment: pipeline.analyze.sentiment,
+      keywords: (pipeline.analyze.keywords || []).slice(0, 10),
+      opinions: pipeline.analyze.opinions || [],
+      contributors: pipeline.analyze.contributors || []
+    })
+  }
+  const analyze = pipeline.analyze
 
   // ---- 4. 洞察 ----
-  report('insight', 'running', { _running: true, model: labelOf(primary) })
-  const insight = await insightAgent(analyze, keyword, primary)
-  report('insight', 'done', {
-    trend: insight.trend,
-    risks: insight.risks || [],
-    demands: insight.demands || [],
-    cause: insight.cause
-  })
+  if (pipeline.insight) {
+    emit('insight', 'done', savedDetailOf('insight', {
+      trend: pipeline.insight.trend,
+      risks: pipeline.insight.risks || [],
+      demands: pipeline.insight.demands || [],
+      cause: pipeline.insight.cause
+    }))
+  } else {
+    report('insight', 'running', { _running: true, model: labelOf(primary) })
+    pipeline.insight = await insightAgent(analyze, keyword, primary)
+    emit('insight', 'done', {
+      trend: pipeline.insight.trend,
+      risks: pipeline.insight.risks || [],
+      demands: pipeline.insight.demands || [],
+      cause: pipeline.insight.cause
+    })
+  }
+  const insight = pipeline.insight
 
-  // ---- 5. 论坛协作 / 交叉验证（多模型协作：主持人引导多轮复核）----
+  // ---- 5. 论坛协作 / 交叉验证 ----
   let debate = null
   if (ENABLE_DEBATE) {
-    if (FORUM_CONFIG.enabled) {
-      // 多轮论坛：主模型担任主持人，非主模型作为验证 Agent 轮流发言
+    if (pipeline.debate) {
+      debate = pipeline.debate
+      emit('debate', 'done', savedDetailOf('debate', {
+        agreement: debate.agreement,
+        hasDivergence: debate.hasDivergence,
+        disputes: debate.disputes || [],
+        supplement: debate.supplement || [],
+        reviewers: debate.reviewers || [],
+        rounds: debate.rounds || [],
+        consensus: debate.consensus || [],
+        questions: debate.questions || [],
+        trace: debate.trace
+      }))
+    } else if (FORUM_CONFIG.enabled) {
       report('debate', 'running', {
         _running: true,
         _forum: true,
@@ -137,7 +208,6 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport,
         rounds: FORUM_CONFIG.rounds,
         onRound: (round, payload) => {
           liveRounds.push(payload)
-          // 逐轮回传，UI 可实时展示论坛进程
           report('debate', 'running', {
             _running: true,
             _forum: true,
@@ -147,37 +217,64 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport,
           })
         }
       })
+      pipeline.debate = debate
+      if (debate.calibratedSentiment) {
+        analyze.sentiment = debate.calibratedSentiment
+      }
+      emit('debate', 'done', {
+        agreement: debate.agreement,
+        hasDivergence: debate.hasDivergence,
+        disputes: debate.disputes || [],
+        supplement: debate.supplement || [],
+        reviewers: debate.reviewers || [],
+        rounds: debate.rounds || [],
+        consensus: debate.consensus || [],
+        questions: debate.questions || [],
+        trace: debate.trace
+      })
     } else {
-      // 单轮交叉验证（兼容旧行为）
       report('debate', 'running', { _running: true, reviewers: validators.map(labelOf) })
       debate = await debateService({ keyword, analyze, insight, validators })
+      pipeline.debate = debate
+      if (debate.calibratedSentiment) {
+        analyze.sentiment = debate.calibratedSentiment
+      }
+      emit('debate', 'done', {
+        agreement: debate.agreement,
+        hasDivergence: debate.hasDivergence,
+        disputes: debate.disputes || [],
+        supplement: debate.supplement || [],
+        reviewers: debate.reviewers || [],
+        rounds: debate.rounds || [],
+        consensus: debate.consensus || [],
+        questions: debate.questions || [],
+        trace: debate.trace
+      })
     }
-    // 若校准后有更新，采用校准情感占比
-    if (debate.calibratedSentiment) {
-      analyze.sentiment = debate.calibratedSentiment
-    }
-    report('debate', 'done', {
-      agreement: debate.agreement,
-      hasDivergence: debate.hasDivergence,
-      disputes: debate.disputes || [],
-      supplement: debate.supplement || [],
-      reviewers: debate.reviewers || [],
-      rounds: debate.rounds || [],
-      consensus: debate.consensus || [],
-      questions: debate.questions || [],
-      trace: debate.trace
-    })
   } else {
     report('debate', 'skipped')
   }
 
-  // ---- 本地趋势推演（不占用步骤，用于报告与看板）----
+  // ---- 本地趋势推演 ----
   const trend = trendPredict({ analyze, insight })
 
-  // ---- 6. 报告（流式生成，实时展示 DeepSeek 撰写/思考过程）----
+  // ---- 6. 报告（流式生成）----
   const template = getTemplate(templateId || DEFAULT_TEMPLATE_ID)
+  let reportText = pipeline.reportText
+  if (reportText) {
+    const ir = markdownToIR(reportText, {
+      keyword,
+      templateId: template.id,
+      templateName: template.name,
+      accent: template.accent,
+      riskLevel: trend?.riskLevel || null
+    })
+    emit('report', 'done', savedDetailOf('report', { length: reportText.length, template: template.name, sections: ir.sections.length }))
+    return { keyword, raw, cleaned, analyze, insight, trend, debate, sources, report: reportText, ir, templateId: template.id }
+  }
+
   report('report', 'running', { _running: true, model: labelOf(primary), template: template.name })
-  const reportText = await reportAgent({
+  reportText = await reportAgent({
     keyword,
     cleaned,
     analyze,
@@ -194,8 +291,9 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport,
         }
       : undefined
   })
+  pipeline.reportText = reportText
 
-  // ---- 报告 IR 化：将 Markdown 解析为结构化中间表示，供多格式渲染（HTML/PDF）----
+  // ---- 报告 IR 化 ----
   const ir = markdownToIR(reportText, {
     keyword,
     templateId: template.id,
@@ -203,7 +301,7 @@ export async function runAgentFlow({ keyword, rawText, models, onStep, onReport,
     accent: template.accent,
     riskLevel: trend?.riskLevel || null
   })
-  report('report', 'done', { length: reportText.length, template: template.name, sections: ir.sections.length })
+  emit('report', 'done', { length: reportText.length, template: template.name, sections: ir.sections.length })
 
   return { keyword, raw, cleaned, analyze, insight, trend, debate, sources, report: reportText, ir, templateId: template.id }
 }

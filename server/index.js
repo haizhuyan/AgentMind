@@ -18,6 +18,18 @@ import { bochaSearch, bochaWebSearch } from './bocha.js'
 import { anspireSearch } from './anspire.js'
 import { fetchHotList } from './hotlist.js'
 import { fetchHotListBySpider, crawlBySpider, checkMindSpiderEnv } from './mindspider.js'
+import { createCrawlJob, getCrawlJob, getCrawlQueueStatus } from './crawlQueue.js'
+import { hashPassword, verifyPassword, signToken, requireAuth } from './auth.js'
+import {
+  createUser,
+  getUserByUsername,
+  createRecord,
+  listRecords,
+  getRecordById,
+  deleteRecord,
+  updateRecordStep,
+  finishRecord
+} from './db.js'
 
 dotenv.config()
 
@@ -146,6 +158,109 @@ app.get('/api/models', (req, res) => {
   res.json({
     models: MODELS.map((m) => ({ id: m.id, label: m.label, model: m.model }))
   })
+})
+
+// ---------- 账号体系（注册 / 登录 / 当前用户）----------
+
+const USERNAME_RE = /^[a-zA-Z0-9_\u4e00-\u9fa5]{2,20}$/
+
+app.post('/api/auth/register', (req, res) => {
+  const { username, password } = req.body || {}
+  const name = String(username || '').trim()
+  const pwd = String(password || '')
+  if (!USERNAME_RE.test(name)) {
+    return res
+      .status(400)
+      .json({ error: '用户名需为 2-20 位字母/数字/下划线/中文。' })
+  }
+  if (pwd.length < 6 || pwd.length > 64) {
+    return res.status(400).json({ error: '密码长度需为 6-64 位。' })
+  }
+  if (getUserByUsername(name)) {
+    return res.status(409).json({ error: '用户名已存在，请更换。' })
+  }
+  const user = createUser(name, hashPassword(pwd))
+  res.json({ token: signToken(user), user })
+})
+
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body || {}
+  const name = String(username || '').trim()
+  const user = getUserByUsername(name)
+  if (!user || !verifyPassword(String(password || ''), user.password_hash)) {
+    return res.status(401).json({ error: '用户名或密码错误。' })
+  }
+  res.json({
+    token: signToken(user),
+    user: { id: user.id, username: user.username, createdAt: user.created_at }
+  })
+})
+
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ user: req.user })
+})
+
+// ---------- 分析记录（登录用户）----------
+// 完整分析结果（报告/图表数据/来源等）序列化后存 SQLite，支持回看。
+
+app.get('/api/records', requireAuth, (req, res) => {
+  res.json({ records: listRecords(req.user.id) })
+})
+
+app.get('/api/records/:id', requireAuth, (req, res) => {
+  const record = getRecordById(req.user.id, Number(req.params.id))
+  if (!record) {
+    return res.status(404).json({ error: '记录不存在。' })
+  }
+  res.json({ record })
+})
+
+app.post('/api/records', requireAuth, (req, res) => {
+  const { keyword, source = 'search', platform = '' } = req.body || {}
+  const kw = String(keyword || '').trim()
+  if (!kw) {
+    return res.status(400).json({ error: '缺少 keyword。' })
+  }
+  const record = createRecord({ userId: req.user.id, keyword: kw, source, platform })
+  res.json({ record })
+})
+
+// 步骤增量保存：流水线每完成一步，前端提交最新步骤态与流水线快照
+app.patch('/api/records/:id/step', requireAuth, (req, res) => {
+  const { stepState, pipeline } = req.body || {}
+  const record = updateRecordStep({
+    userId: req.user.id,
+    recordId: Number(req.params.id),
+    stepState,
+    pipeline
+  })
+  if (!record) return res.status(404).json({ error: '记录不存在。' })
+  res.json({ ok: true })
+})
+
+// 流程收尾：completed（写入完整结果）/ failed（保留流水线快照，可继续）
+app.patch('/api/records/:id/finish', requireAuth, (req, res) => {
+  const { status, result } = req.body || {}
+  const st = status === 'failed' ? 'failed' : 'completed'
+  let resultJson = null
+  if (st === 'completed' && result && typeof result === 'object') {
+    try {
+      resultJson = result
+    } catch {
+      return res.status(400).json({ error: '分析结果序列化失败。' })
+    }
+  }
+  if (st === 'completed' && !resultJson) {
+    return res.status(400).json({ error: 'completed 状态需要 result。' })
+  }
+  const record = finishRecord({ userId: req.user.id, recordId: Number(req.params.id), status: st, result: resultJson })
+  if (!record) return res.status(404).json({ error: '记录不存在。' })
+  res.json({ ok: true, record: { id: record.id, status: record.status } })
+})
+
+app.delete('/api/records/:id', requireAuth, (req, res) => {
+  deleteRecord(req.user.id, Number(req.params.id))
+  res.json({ ok: true })
 })
 
 // ---------- 舆情采集：多源聚合（Bocha + Anspire）----------
@@ -316,6 +431,63 @@ app.get('/api/mindspider/status', async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message })
   }
+})
+
+// ---------- 爬虫后台任务队列（生产「无感」爬取）----------
+// 提交任务立即返回 jobId，后台单工执行，前端轮询状态、完成后接续流水线。
+
+const CRAWL_PLATFORMS = ['weibo', 'wb', 'xhs', 'dy', 'ks', 'bili', 'tieba', 'zhihu']
+
+app.post('/api/crawl/job', requireAuth, (req, res) => {
+  const { keyword, platform, maxNotes = 20 } = req.body || {}
+  const kw = String(keyword || '').trim()
+  const pf = String(platform || MINDSPIDER.platform).toLowerCase()
+  if (!kw) return res.status(400).json({ error: '缺少 keyword。' })
+  if (!CRAWL_PLATFORMS.includes(pf)) {
+    return res.status(400).json({ error: `不支持的平台：${pf}（weibo/xhs/dy/ks/bili/tieba/zhihu）` })
+  }
+  if (!MINDSPIDER.enabled) {
+    return res.status(400).json({
+      error: 'MindSpider 数据源未启用：请在 .env 设置 MINDSPIDER_ENABLED=true（详见 README「MindSpider 爬虫接入」）。'
+    })
+  }
+  const job = createCrawlJob({
+    keyword: kw,
+    platform: pf,
+    maxNotes: Math.min(Number(maxNotes) || 20, 100)
+  })
+  res.json({
+    job: {
+      id: job.id,
+      keyword: job.keyword,
+      platform: job.platform,
+      status: job.status,
+      progress: job.progress
+    },
+    queue: getCrawlQueueStatus()
+  })
+})
+
+app.get('/api/crawl/job/:id', requireAuth, (req, res) => {
+  const job = getCrawlJob(Number(req.params.id))
+  if (!job) return res.status(404).json({ error: '任务不存在。' })
+  res.json({
+    job: {
+      id: job.id,
+      keyword: job.keyword,
+      platform: job.platform,
+      status: job.status,
+      progress: job.progress,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+      result: job.status === 'completed' ? job.result : null,
+      error: job.status === 'failed' ? job.error : null
+    }
+  })
+})
+
+app.get('/api/crawl/status', requireAuth, (req, res) => {
+  res.json(getCrawlQueueStatus())
 })
 
 // ---------- LLM 代理 ----------

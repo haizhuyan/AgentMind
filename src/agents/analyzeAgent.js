@@ -1,6 +1,7 @@
 import { callLLM, parseJSON } from '../services/llmService.js'
 import { analyzeLocalSentiment, fuseSentiment } from '../utils/localSentiment.js'
 import { LOCAL_SENTIMENT_CONFIG } from '../config.js'
+import { isDemoMode } from '../services/demoMode.js'
 
 /**
  * 分析 Agent
@@ -134,9 +135,13 @@ export async function analyzeAgent(cleanedList, models) {
   let localSentiment = null
   if (LOCAL_SENTIMENT_CONFIG.enabled) {
     const local = analyzeLocalSentiment(cleanedList)
-    localSentiment = { ...local, weight: LOCAL_SENTIMENT_CONFIG.weight }
-    const llmSentiment = merged.sentiment
-    merged.sentiment = fuseSentiment(llmSentiment, local, LOCAL_SENTIMENT_CONFIG.weight)
+    // 离线演示模式：仅展示本地情感词典贡献，不做融合
+    // （保证回放真实案例的 LLM 情感占比与论坛校准值精确一致）
+    localSentiment = { ...local, weight: isDemoMode() ? 0 : LOCAL_SENTIMENT_CONFIG.weight }
+    if (!isDemoMode()) {
+      const llmSentiment = merged.sentiment
+      merged.sentiment = fuseSentiment(llmSentiment, local, LOCAL_SENTIMENT_CONFIG.weight)
+    }
     // 作为一个「贡献者」展示（区别于大模型：kind = 'local'）
     contributors.push({
       label: '本地情感词典',

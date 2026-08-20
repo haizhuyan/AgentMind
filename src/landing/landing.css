@@ -1,0 +1,440 @@
+/* ============================================================
+   AgentMind Landing Page — Global Styles
+   （从 homedemo/styles.css 1:1 移植，选择器统一挂在 .landing-page 下，
+     避免与工作台样式冲突）
+   Design direction: Blue & White Professional
+   Palette: White/light-gray base + Blue primary + Cyan accent
+   ============================================================ */
+
+:root {
+  /* Base ink tones — flipped for light theme */
+  --ink-950: #FFFFFF;  /* pure white — page bg */
+  --ink-900: #F8FAFC;  /* near-white — section bg, card bg */
+  --ink-800: #F1F5F9;  /* very light slate — secondary surface */
+  --ink-700: #E2E8F0;  /* light slate — subtle surface, dividers */
+  --ink-600: #CBD5E1;  /* medium slate — borders, soft elements */
+  --ink-500: #94A3B8;  /* slate — placeholder, muted meta */
+  --ink-400: #64748B;  /* slate-600 — secondary text */
+  --ink-300: #475569;  /* slate-700 — body text */
+  --ink-200: #334155;  /* slate-800 — heading / strong text */
+  --ink-100: #1E293B;  /* slate-900 — darkest heading */
+  --ink-50:  #0F172A;  /* slate-950 — max contrast, for boldest text */
+
+  /* Signature: Primary Blue — brand / CTA / key focus */
+  --signal: #2563EB;
+  --signal-600: #1D4ED8;
+  --signal-500: #3B82F6;
+  --signal-400: #60A5FA;
+  --signal-glow: rgba(37, 99, 235, 0.22);
+
+  /* Secondary: Sky Cyan — data / analysis / calm tech */
+  --cyan: #0EA5E9;
+  --cyan-600: #0284C7;
+  --cyan-500: #38BDF8;
+  --cyan-400: #7DD3FC;
+  --cyan-glow: rgba(14, 165, 233, 0.22);
+
+  /* Accent: Emerald — insight / positive signal */
+  --chartreuse: #10B981;
+  --chartreuse-glow: rgba(16, 185, 129, 0.22);
+
+  /* Red — risk / danger */
+  --risk: #EF4444;
+  --risk-glow: rgba(239, 68, 68, 0.25);
+
+  /* Background surface */
+  --bg: var(--ink-950);
+  --surface: var(--ink-900);
+  --surface-2: var(--ink-800);
+  --surface-3: var(--ink-700);
+
+  /* Border */
+  --border: #E2E8F0;
+  --border-strong: #CBD5E1;
+
+  /* Typography */
+  --font-display: "Noto Sans SC", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: "Inter", "Noto Sans SC", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Spacing */
+  --section-py: clamp(64px, 10vh, 120px);
+  --container-max: 1280px;
+  --container-px: clamp(20px, 4vw, 48px);
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+.landing-page {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  font-family: var(--font-body);
+  background-color: var(--bg);
+  color: var(--ink-300);
+  font-size: 16px;
+  line-height: 1.6;
+  font-weight: 400;
+  overflow-x: hidden;
+  background-image:
+    radial-gradient(ellipse 1000px 600px at 10% -10%, rgba(37, 99, 235, 0.06), transparent 60%),
+    radial-gradient(ellipse 800px 500px at 90% 10%, rgba(14, 165, 233, 0.05), transparent 60%);
+  background-attachment: fixed;
+}
+
+/* Global grid pattern overlay */
+.landing-page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 50% at 50% 0%, black 30%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 50% at 50% 0%, black 30%, transparent 80%);
+}
+
+.landing-page > *:not(::before) {
+  position: relative;
+  z-index: 1;
+}
+
+.landing-page .container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 var(--container-px);
+}
+
+/* Typography scale */
+.landing-page h1,
+.landing-page h2,
+.landing-page h3,
+.landing-page h4,
+.landing-page h5,
+.landing-page h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--ink-100);
+}
+
+.landing-page h1 { font-size: clamp(36px, 5.5vw, 64px); font-weight: 900; letter-spacing: -0.02em; }
+.landing-page h2 { font-size: clamp(28px, 4vw, 44px); font-weight: 700; letter-spacing: -0.02em; }
+.landing-page h3 { font-size: clamp(20px, 2.5vw, 28px); font-weight: 600; }
+.landing-page h4 { font-size: 18px; font-weight: 600; }
+
+.landing-page p { color: var(--ink-400); }
+
+.landing-page a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.landing-page .section {
+  padding: var(--section-py) 0;
+  position: relative;
+}
+
+.landing-page .section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--signal);
+  margin-bottom: 16px;
+}
+
+.landing-page .section-label::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--signal);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--signal-glow);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.landing-page .section-heading {
+  max-width: 720px;
+  margin-bottom: 16px;
+}
+
+.landing-page .section-subheading {
+  max-width: 640px;
+  font-size: 17px;
+  color: var(--ink-400);
+  margin-bottom: 48px;
+}
+
+/* Buttons */
+.landing-page .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+.landing-page .btn-primary {
+  background: var(--signal);
+  color: #fff;
+  border-color: var(--signal);
+  box-shadow: 0 4px 14px var(--signal-glow), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+.landing-page .btn-primary:hover {
+  background: var(--signal-600);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px var(--signal-glow), inset 0 1px 0 rgba(255,255,255,0.25);
+}
+
+.landing-page .btn-secondary {
+  background: var(--ink-950);
+  color: var(--ink-200);
+  border-color: var(--border-strong);
+}
+
+.landing-page .btn-secondary:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+  box-shadow: 0 0 0 3px var(--signal-glow);
+}
+
+.landing-page .btn-ghost {
+  background: transparent;
+  color: var(--ink-300);
+  border-color: transparent;
+  padding: 8px 14px;
+}
+
+.landing-page .btn-ghost:hover {
+  color: var(--signal);
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.landing-page .btn-sm { padding: 8px 16px; font-size: 13px; }
+.landing-page .btn-lg { padding: 16px 28px; font-size: 15px; }
+
+/* Card */
+.landing-page .card {
+  background: var(--ink-950);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  transition: all 0.25s ease;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.landing-page .card:hover {
+  border-color: var(--signal-400);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+/* Accent line (left border for cards) */
+.landing-page .accent-line {
+  position: relative;
+}
+
+.landing-page .accent-line::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 24px;
+  bottom: 24px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--signal);
+  box-shadow: 0 0 8px var(--signal-glow);
+}
+
+/* Badge / tag */
+.landing-page .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--ink-400);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.landing-page .badge-signal {
+  color: var(--signal);
+  border-color: rgba(37, 99, 235, 0.25);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.landing-page .badge-cyan {
+  color: var(--cyan);
+  border-color: rgba(14, 165, 233, 0.25);
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.landing-page .badge-chartreuse {
+  color: var(--chartreuse);
+  border-color: rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+/* Utility */
+.landing-page .text-signal { color: var(--signal); }
+.landing-page .text-cyan { color: var(--cyan); }
+.landing-page .text-mono { font-family: var(--font-mono); }
+.landing-page .gradient-text {
+  background: linear-gradient(135deg, var(--signal) 0%, var(--cyan) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Keyframes（Hero / 各组件动画） */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+@keyframes packet-flow {
+  0% { left: 0%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+
+.landing-page .cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* Navbar 响应式 */
+@media (max-width: 960px) {
+  .landing-page .nav-links { display: none !important; }
+  .landing-page .nav-actions .btn-ghost { display: none; }
+  .landing-page .mobile-toggle { display: flex !important; }
+}
+
+/* Hero 响应式 */
+@media (max-width: 768px) {
+  .landing-page .hero { padding-top: 100px !important; padding-bottom: 48px !important; }
+  .landing-page .hero-br { display: none; }
+  .landing-page .pipeline-track { display: none; }
+  .landing-page .pipeline-section > .pipeline-track-wrap > div:last-child {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 24px 8px !important;
+  }
+  .landing-page .agent-node > div:nth-child(3) { display: none; }
+}
+
+/* Features 响应式 */
+@media (max-width: 960px) {
+  .landing-page .features-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+@media (max-width: 600px) {
+  .landing-page .features-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.landing-page .feature-card:hover .feature-accent {
+  opacity: 1 !important;
+}
+
+/* Pipeline 响应式 */
+@media (max-width: 960px) {
+  .landing-page .pipeline-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .landing-page .connector-right { display: none; }
+  .landing-page .stats-row {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* Scenarios 响应式 */
+@media (max-width: 1024px) {
+  .landing-page .scenarios-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+@media (max-width: 560px) {
+  .landing-page .scenarios-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ReportPreview 响应式 */
+@media (max-width: 960px) {
+  .landing-page .report-sidebar { display: none; }
+  .landing-page .report-content { padding: 20px !important; }
+  .landing-page .metrics-row { grid-template-columns: repeat(2, 1fr) !important; }
+  .landing-page .charts-row { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 600px) {
+  .landing-page .templates-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .landing-page .metrics-row { grid-template-columns: 1fr 1fr !important; }
+}
+
+/* CTA 响应式 */
+@media (max-width: 640px) {
+  .landing-page .cta-card { padding: 40px 24px !important; }
+}
+
+/* Footer 响应式 */
+@media (max-width: 768px) {
+  .landing-page .footer-grid {
+    grid-template-columns: 1fr !important;
+    gap: 32px !important;
+  }
+  .landing-page .footer-links {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+@media (max-width: 480px) {
+  .landing-page .footer-links {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+  }
+}
+
+/* 通用节流 */
+@media (max-width: 768px) {
+  .landing-page .section { padding: 60px 0; }
+}

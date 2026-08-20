@@ -9,8 +9,10 @@ import { downloadReportPdf } from '../utils/pdfExport.js'
  * @param {Object} props.debate   辩论/交叉验证结果（展示溯源）
  * @param {Array}  props.sources  采集来源列表
  * @param {Object} props.result   完整分析结果（用于导出 HTML）
+ * @param {boolean} [props.embedded] 嵌入模式：不渲染卡片外壳/标题/导出按钮，
+ *        由外层容器统一提供标题与操作（避免重复一套导出入口）
  */
-export default function ReportPanel({ report, debate, sources = [], result }) {
+export default function ReportPanel({ report, debate, sources = [], result, embedded = false }) {
   const [copied, setCopied] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
 
@@ -51,24 +53,8 @@ export default function ReportPanel({ report, debate, sources = [], result }) {
     }
   }
 
-  return (
-    <section className="card report-panel">
-      <h2 className="card-title">
-        <span className="title-bar" />
-        舆情分析报告
-        <span className="report-actions">
-          <button className="copy-btn" onClick={exportPdf} disabled={pdfLoading}>
-            {pdfLoading ? '生成中…' : '导出 PDF'}
-          </button>
-          <button className="copy-btn" onClick={exportHtml}>
-            导出 HTML
-          </button>
-          <button className="copy-btn" onClick={copy}>
-            {copied ? '已复制 ✓' : '复制报告'}
-          </button>
-        </span>
-      </h2>
-
+  const body = (
+    <>
       {debate && (
         <div className={`trace-box ${debate.hasDivergence ? 'warn' : 'ok'}`}>
           <b>结论溯源：</b>
@@ -93,6 +79,32 @@ export default function ReportPanel({ report, debate, sources = [], result }) {
           </ol>
         </div>
       )}
+    </>
+  )
+
+  // 嵌入模式：由外层「最终分析报告」卡片统一提供标题与导出操作
+  if (embedded) {
+    return <div className="report-panel-embedded">{body}</div>
+  }
+
+  return (
+    <section className="card report-panel">
+      <h2 className="card-title">
+        <span className="title-bar" />
+        舆情分析报告
+        <span className="report-actions">
+          <button className="copy-btn" onClick={exportPdf} disabled={pdfLoading}>
+            {pdfLoading ? '生成中…' : '导出 PDF'}
+          </button>
+          <button className="copy-btn" onClick={exportHtml}>
+            导出 HTML
+          </button>
+          <button className="copy-btn" onClick={copy}>
+            {copied ? '已复制 ✓' : '复制报告'}
+          </button>
+        </span>
+      </h2>
+      {body}
     </section>
   )
 }

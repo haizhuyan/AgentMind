@@ -79,8 +79,21 @@ function runBridge(args, { timeoutMs = 120000 } = {}) {
           reject(new Error(`MindSpider 桥接输出解析失败：${err.message}。原始输出：${stdout.slice(-500)}`))
         }
       } else {
-        const detail = stripAnsi(stderr).trim().slice(-600) || stripAnsi(stdout).trim().slice(-600)
-        reject(new Error(`MindSpider 桥接执行失败（退出码 ${code}）：${detail || '无输出'}`))
+        // 桥接脚本失败时会在 stdout 最后一行输出 {"error": ...}；
+        // 优先使用该结构化错误，缺失时才回退 stderr 日志尾部。
+        let jsonError = ''
+        try {
+          const lines = stripAnsi(stdout).trim().split(/\r?\n/).filter(Boolean)
+          const parsed = JSON.parse(lines[lines.length - 1] || '{}')
+          if (parsed?.error) jsonError = parsed.error
+        } catch {
+          /* 忽略：stdout 不是 JSON */
+        }
+        const detail =
+          jsonError ||
+          stripAnsi(stderr).trim().slice(-600) ||
+          stripAnsi(stdout).trim().slice(-600)
+        reject(new Error(detail || `MindSpider 桥接执行失败（退出码 ${code}）`))
       }
     })
   })

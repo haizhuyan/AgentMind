@@ -13,7 +13,7 @@
 export const REPORT_TEMPLATES = [
   {
     id: 'general',
-    name: '通用舆情分析报告',
+    name: '通用舆情',
     desc: '适用于大多数关键词舆情的标准分析结构',
     accent: '#007aff',
     sections: [
@@ -26,7 +26,7 @@ export const REPORT_TEMPLATES = [
   },
   {
     id: 'brand',
-    name: '企业品牌声誉分析报告',
+    name: '品牌声誉',
     desc: '面向企业/品牌的声誉健康度评估',
     accent: '#5856d6',
     sections: [
@@ -39,7 +39,7 @@ export const REPORT_TEMPLATES = [
   },
   {
     id: 'crisis',
-    name: '危机公关应对报告',
+    name: '危机公关',
     desc: '突发负面/危机事件的快速研判与处置',
     accent: '#ff3b30',
     sections: [
@@ -52,7 +52,7 @@ export const REPORT_TEMPLATES = [
   },
   {
     id: 'review',
-    name: '事件舆情复盘报告',
+    name: '舆情复盘',
     desc: '事件平息后的完整回顾与经验沉淀',
     accent: '#5856d6',
     sections: [

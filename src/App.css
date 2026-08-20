@@ -1,7 +1,7 @@
 .app {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr) 360px;
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: 22px;
   align-items: start;
   padding: 22px;
@@ -1425,30 +1425,347 @@
   line-height: 1.4;
 }
 
+/* ---------- 用户身份（左侧栏底部） ---------- */
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--card-inner);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 100%;
+}
+.user-chip-avatar {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #007aff, #5856d6);
+}
+.user-chip-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.logout-btn {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-1);
+  font-size: 11.5px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.logout-btn:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+/* ---------- 服务端分析记录（RecordsPanel） ---------- */
+.records-panel .records-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-1);
+  background: var(--card-inner);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 12px;
+}
+.records-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.records-item-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.records-item-wrap.active .records-item {
+  border-color: var(--accent);
+  background: rgba(0, 122, 255, 0.05);
+}
+.records-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--card-inner);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.18s ease;
+}
+.records-item:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(0, 122, 255, 0.05);
+}
+.records-item:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.records-kw {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.records-meta {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--text-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.records-meta i {
+  font-style: normal;
+  opacity: 0.6;
+}
+.records-del {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text-1);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.18s ease;
+}
+.records-del:hover:not(:disabled) {
+  border-color: var(--red);
+  color: var(--red);
+  opacity: 1;
+}
+.records-del:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* ---------- 历史回看（record-view） ---------- */
+.record-view .record-view-meta {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-1);
+}
+.record-view .record-view-close {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-1);
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.record-view .record-view-close:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------- 登录弹窗（LoginModal） ---------- */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+.login-modal {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 30px 28px 26px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+  animation: fadeInUp 0.3s ease;
+}
+.login-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card-inner);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-1);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.login-modal-close:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+.login-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-0);
+  margin-bottom: 20px;
+}
+.login-modal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #007aff, #5856d6);
+}
+.login-modal-tabs {
+  display: flex;
+  background: var(--card-inner);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 22px;
+}
+.login-modal-tab {
+  flex: 1;
+  padding: 9px 0;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-1);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.login-modal-tab.active {
+  background: #fff;
+  color: var(--text-0);
+  box-shadow: 0 2px 8px rgba(29, 29, 31, 0.1);
+}
+.login-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.login-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.login-modal-field span {
+  font-size: 12.5px;
+  color: var(--text-1);
+  font-weight: 600;
+}
+.login-modal-field input {
+  background: var(--card-inner);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--text-0);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.login-modal-field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+}
+.login-modal-error {
+  color: var(--red);
+  font-size: 13px;
+  margin: 0;
+}
+.login-modal-submit {
+  background: linear-gradient(135deg, #007aff, #5856d6);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 13px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.login-modal-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 122, 255, 0.3);
+}
+.login-modal-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.login-modal-demo {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  background: transparent;
+  border: none;
+  color: var(--text-1);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.login-modal-demo:hover {
+  color: var(--accent);
+}
+
 /* ---------- Responsive ---------- */
-/* 中等屏：右侧热搜折叠到下方 */
+/* 中等屏：侧栏略窄 */
 @media (max-width: 1280px) {
   .app {
     grid-template-columns: 280px minmax(0, 1fr);
   }
-  .sidebar-right {
-    position: static;
-    height: auto;
-    grid-column: 1 / -1;
-    overflow: visible;
-  }
-  .sidebar-right .hotlist {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px 18px;
-  }
-  .guide-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 
-/* 窄屏：三栏堆叠为单列 */
+/* 窄屏：堆叠为单列 */
 @media (max-width: 860px) {
+  .landing {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    padding: 28px 20px;
+  }
+  .landing-title {
+    font-size: 28px;
+  }
   .app {
     grid-template-columns: minmax(0, 1fr);
     padding: 16px;
@@ -1459,42 +1776,13 @@
     overflow: visible;
     gap: 18px;
   }
-  .sidebar-left .model-chips,
-  .sidebar-left .template-chips {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-  .sidebar-left .model-chip-wrap {
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .sidebar-left .model-set-primary {
-    align-self: auto;
-    margin: 0;
-    position: static;
-  }
   .sidebar-bottom {
     margin-top: 0;
-  }
-  .sidebar-right {
-    grid-column: auto;
   }
   .chart-grid {
     grid-template-columns: 1fr;
   }
   .app-title {
     font-size: 26px;
-  }
-  .input-row {
-    flex-direction: column;
-  }
-  .hotlist {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-  .guide-grid {
-    grid-template-columns: 1fr;
   }
 }

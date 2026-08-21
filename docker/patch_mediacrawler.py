@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Patch MediaCrawler for Linux Docker.
 
-1. Remove channel=\"chrome\" (no Google Chrome in image; Playwright Chromium only).
-2. Inject --no-sandbox args for standard Playwright launch path.
+1. Remove channel=\"chrome\" (image has Chromium, not Google Chrome).
+2. Inject --no-sandbox args into Playwright launch / launch_persistent_context.
 """
 from __future__ import annotations
 
@@ -11,10 +11,18 @@ import sys
 from pathlib import Path
 
 ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else "mindspider/DeepSentimentCrawling/MediaCrawler")
-ARGS_LINE = (
-    '                args=["--no-sandbox", "--disable-dev-shm-usage", '
-    '"--disable-gpu", "--disable-software-rasterizer"],\n'
+ARGS = (
+    'args=["--no-sandbox", "--disable-dev-shm-usage", '
+    '"--disable-gpu", "--disable-software-rasterizer"]'
 )
+
+
+def _is_launch_call(line: str) -> bool:
+    return (
+        "launch_persistent_context(" in line
+        or "chromium.launch(" in line
+        or "browser_type.launch(" in line
+    )
 
 
 def patch_text(text: str) -> str:
@@ -26,26 +34,36 @@ def patch_text(text: str) -> str:
     in_launch = False
     saw_args = False
     depth = 0
+    last_param_indent = "                "
+
     for line in lines:
-        stripped = line.lstrip()
-        if (
-            "launch_persistent_context(" in line
-            or re.search(r"\blaunch\(", line)
-        ) and not in_launch:
+        if not in_launch and _is_launch_call(line):
             in_launch = True
             saw_args = "args=" in line
             depth = line.count("(") - line.count(")")
+            if depth <= 0:
+                # Single-line call: inject before the closing paren, then leave.
+                if not saw_args and ")" in line:
+                    line = re.sub(r"\)\s*$", f", {ARGS})", line.rstrip("\n")) + (
+                        "\n" if line.endswith("\n") else ""
+                    )
+                in_launch = False
+                saw_args = False
+                out.append(line)
+                continue
             out.append(line)
             continue
 
         if in_launch:
             if "args=" in line:
                 saw_args = True
+            m = re.match(r"^(\s+)\w+\s*=", line)
+            if m:
+                last_param_indent = m.group(1)
             depth += line.count("(") - line.count(")")
-            # Insert args before the closing of the call when we hit a line with only )
             if depth <= 0:
                 if not saw_args:
-                    out.append(ARGS_LINE)
+                    out.append(f"{last_param_indent}{ARGS},\n")
                 in_launch = False
                 saw_args = False
             out.append(line)
@@ -63,6 +81,8 @@ def main() -> None:
         original = path.read_text(encoding="utf-8")
         updated = patch_text(original)
         if updated != original:
+            # Fail fast if we introduced a syntax error
+            compile(updated, str(path), "exec")
             path.write_text(updated, encoding="utf-8")
             changed += 1
             print(f"patched {path.relative_to(ROOT)}")

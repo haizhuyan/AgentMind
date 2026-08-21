@@ -36,8 +36,11 @@ services:
       # 平台登录态（扫码成功后务必保留）
       - crawler-browser-data:/app/mindspider/DeepSentimentCrawling/MediaCrawler/browser_data
       - crawler-user-data:/app/mindspider/DeepSentimentCrawling/MediaCrawler/user_data
+      # 爬虫 JSON 输出（便于排查「找不到输出文件」）
+      - crawler-data:/app/mindspider/DeepSentimentCrawling/MediaCrawler/data
 
 volumes:
   agentmind-data:
   crawler-browser-data:
   crawler-user-data:
+  crawler-data:

@@ -255,17 +255,37 @@ def _force_json_save_option():
     pc_mod.PlatformCrawler.run_crawler = _wrapped_crawl
 
 
-def _latest_json_files(media_crawler_root: Path, limit: int = 10) -> list:
-    """扫描 MediaCrawler/data 下最近修改的 json 输出文件。
+def _list_data_tree(media_crawler_root: Path, limit: int = 30) -> str:
+    """列出 data/ 下文件，便于排查「找不到输出」。"""
+    data_dir = media_crawler_root / "data"
+    if not data_dir.exists():
+        return f"{data_dir} 不存在"
+    entries = []
+    for p in sorted(data_dir.rglob("*")):
+        if p.is_file():
+            entries.append(str(p.relative_to(data_dir)))
+        if len(entries) >= limit:
+            entries.append("...")
+            break
+    return "空目录" if not entries else ", ".join(entries)
 
-    新版 MediaCrawler 按平台分目录输出：data/<platform>/json/search_contents_*.json。
-    优先正文（*contents*）而非评论（*comments*），同类型内取最新。
+
+def _latest_data_files(media_crawler_root: Path, limit: int = 20) -> list:
+    """扫描 MediaCrawler/data 下最近修改的 json / jsonl。
+
+    路径形如：data/weibo/json/search_contents_YYYY-MM-DD.json
+             data/weibo/jsonl/search_contents_YYYY-MM-DD.jsonl
+    优先正文（*contents*）而非评论（*comments*）。
     """
     data_dir = media_crawler_root / "data"
     if not data_dir.exists():
         return []
     files = []
-    for p in data_dir.rglob("*.json"):
+    for p in data_dir.rglob("*"):
+        if not p.is_file():
+            continue
+        if p.suffix.lower() not in (".json", ".jsonl"):
+            continue
         try:
             files.append((p.stat().st_mtime, p))
         except OSError:
@@ -273,19 +293,39 @@ def _latest_json_files(media_crawler_root: Path, limit: int = 10) -> list:
 
     def sort_key(item):
         mtime, p = item
-        # contents(0) 排在 comments(1) 前；同类型按修改时间倒序
-        return (0 if "contents" in p.name else 1, -mtime)
+        name = p.name.lower()
+        # contents 优先；json 略优于 jsonl；再按时间
+        kind = 0 if "contents" in name else 1
+        fmt = 0 if p.suffix.lower() == ".json" else 1
+        return (kind, fmt, -mtime)
 
     files.sort(key=sort_key)
     return [p for _, p in files[:limit]]
 
 
-def _parse_crawl_json(payload, keyword: str = None) -> dict:
-    """宽松解析 MediaCrawler 输出 json 为 {texts, sources} 统一结构。
+def _load_data_file(path: Path):
+    """读取 json 数组或 jsonl 行文件，返回 Python 对象。"""
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        return None
+    if path.suffix.lower() == ".jsonl":
+        items = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                items.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return items
+    return json.loads(text)
 
-    MediaCrawler 的日文件会累积当天多次运行的结果（多个 source_keyword 混合），
-    因此按请求关键词过滤：优先只保留 source_keyword 精确匹配的条目；
-    若条目无 source_keyword 字段或过滤后为空，则回退返回全部。
+
+def _parse_crawl_json(payload, keyword: str = None) -> dict:
+    """宽松解析 MediaCrawler 输出为 {texts, sources}。
+
+    按 source_keyword 过滤；无匹配则回退全部。
     """
     texts = []
     sources = []
@@ -293,8 +333,7 @@ def _parse_crawl_json(payload, keyword: str = None) -> dict:
     if isinstance(payload, list):
         items = payload
     elif isinstance(payload, dict):
-        # 常见包裹结构：{key_word: [...]} 或 {list: [...]}
-        for k, v in payload.items():
+        for _k, v in payload.items():
             if isinstance(v, list):
                 items = v
                 break
@@ -314,14 +353,20 @@ def _parse_crawl_json(payload, keyword: str = None) -> dict:
         if not isinstance(it, dict):
             continue
         title = it.get("title") or it.get("note_title") or it.get("desc") or ""
-        content = it.get("content") or it.get("desc") or it.get("brief") or ""
+        content = (
+            it.get("content")
+            or it.get("desc")
+            or it.get("brief")
+            or it.get("note_desc")
+            or ""
+        )
         text = content if content else title
         if not text:
             continue
         texts.append(str(text).strip())
         sources.append(
             {
-                "title": str(title).strip() or str(content).strip()[:60],
+                "title": str(title).strip() or str(text).strip()[:60],
                 "url": it.get("url") or it.get("note_url") or it.get("video_url") or "",
                 "provider": it.get("source_keyword") or "",
             }
@@ -362,15 +407,16 @@ def run_crawl(platform: str, keyword: str, max_notes: int = 20):
         )
         raise RuntimeError(f"MindSpider 爬取失败（{platform}）：{detail}。{hint}")
 
-    # 读取 MediaCrawler 的 json 输出
+    # 读取 MediaCrawler 的 json / jsonl 输出
     media_root = Path(crawler.mediacrawler_path)
     parsed = {"texts": [], "sources": [], "raw": None}
     scanned = False
-    for f in _latest_json_files(media_root):
+    for f in _latest_data_files(media_root):
         try:
-            with open(f, "r", encoding="utf-8") as fh:
-                payload = json.load(fh)
+            payload = _load_data_file(f)
         except Exception:
+            continue
+        if payload is None:
             continue
         scanned = True
         one = _parse_crawl_json(payload, keyword=keyword)
@@ -378,13 +424,17 @@ def run_crawl(platform: str, keyword: str, max_notes: int = 20):
             parsed = {"texts": one["texts"], "sources": one["sources"], "raw_file": str(f)}
             break
     if not parsed["texts"]:
+        tree = _list_data_tree(media_root)
         if scanned:
             raise RuntimeError(
-                f"爬取完成但结果为 0 条（平台 {platform} 未返回「{keyword}」的内容，"
-                "可换关键词重试，或适当增大采集条数）。"
+                f"爬取完成但结果为 0 条（平台 {platform}，关键词「{keyword}」）。"
+                f"data 目录：{tree}。可换更短关键词重试。"
             )
         raise RuntimeError(
-            f"爬取完成但未找到 MediaCrawler 输出文件。平台：{platform}，关键词：{keyword}"
+            f"爬取进程结束但未产生数据文件（平台 {platform}，关键词「{keyword}」）。"
+            "常见原因：未登录/登录失效、搜索 0 条、被风控。"
+            "请用扫码模式重新登录，或换短关键词（如「延迟退休」）再试。"
+            f" data 目录：{tree}"
         )
     return parsed
 

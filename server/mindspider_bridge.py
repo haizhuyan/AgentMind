@@ -387,9 +387,46 @@ def _parse_crawl_json(payload, keyword: str = None) -> dict:
     return {"texts": texts, "sources": sources}
 
 
+def _patch_weibo_login_for_qr() -> None:
+    """微博旧登录页（entry=miniblog）常只显示账密；换成带二维码的 SSO 页。"""
+    login_py = (
+        MINDSPIDER_ROOT
+        / "DeepSentimentCrawling"
+        / "MediaCrawler"
+        / "media_platform"
+        / "weibo"
+        / "login.py"
+    )
+    if not login_py.exists():
+        return
+    text = login_py.read_text(encoding="utf-8")
+    original = text
+
+    # 旧地址 → 带二维码的通行证页（用户实测有效）
+    old_url = "https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog"
+    new_url = (
+        "https://passport.weibo.com/sso/signin?entry=account"
+        "&source=sinassopage&url=https%3A%2F%2Fmy.sina.com.cn"
+    )
+    text = text.replace(old_url, new_url)
+
+    # 放宽二维码图片选择器（页面改版后 class 可能变化）
+    old_sel = 'qrcode_img_selector = "xpath=//img[@class=\'w-full h-full\']"'
+    new_sel = (
+        'qrcode_img_selector = "xpath=//img[contains(@src,\'qrcode\') or '
+        'contains(@src,\'QR\') or contains(@class,\'qr\') or @class=\'w-full h-full\']"'
+    )
+    if old_sel in text:
+        text = text.replace(old_sel, new_sel)
+
+    if text != original:
+        login_py.write_text(text, encoding="utf-8")
+
+
 def run_crawl(platform: str, keyword: str, max_notes: int = 20):
     """真实爬虫采集：调 MindSpider PlatformCrawler，输出统一采集结构。"""
     _inject_paths()
+    _patch_weibo_login_for_qr()
 
     # 平台别名：MediaCrawler 内部代码是 wb（微博），对外同时接受 weibo/wb
     ALIAS = {"weibo": "wb", "wb": "wb", "xhs": "xhs", "dy": "dy", "ks": "ks",

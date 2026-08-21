@@ -32,6 +32,12 @@ def patch_text(text: str) -> str:
     # Bare sys.exit() exits 0 and fools our bridge into thinking crawl succeeded.
     text = re.sub(r"\bsys\.exit\(\s*\)", "sys.exit(1)", text)
 
+    # Weibo：旧 miniblog 登录页常无二维码，换成带二维码的通行证页
+    text = text.replace(
+        "https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog",
+        "https://passport.weibo.com/sso/signin?entry=account&source=sinassopage&url=https%3A%2F%2Fmy.sina.com.cn",
+    )
+
     lines = text.splitlines(keepends=True)
     out: list[str] = []
     in_launch = False

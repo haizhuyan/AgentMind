@@ -10,11 +10,10 @@
 #   docker build -f Dockerfile.base -t agentmind-crawler-base:latest .
 #
 # 禁止 docker-compose down -v（会删掉登录态和分析记录）
+version: "3.8"
 services:
   agentmind:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     image: agentmind:latest
     container_name: agentmind
     ports:

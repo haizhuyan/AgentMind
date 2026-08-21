@@ -129,7 +129,7 @@ export default function CTA({ onFreeTrial }) {
                 </svg>
                 立即免费体验
               </a>
-              <a href="#" className="btn btn-secondary btn-lg">
+              <a href="https://github.com/haizhuyan/AgentMind" className="btn btn-secondary btn-lg" target="_blank">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M12 3L12 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   <path d="M7 12L12 17L17 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

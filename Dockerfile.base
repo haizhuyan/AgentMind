@@ -21,6 +21,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv python3-dev \
     git ca-certificates \
+    chromium \
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
     xvfb x11vnc novnc websockify \
     fonts-liberation fonts-wqy-zenhei \
@@ -33,6 +34,11 @@ RUN mkdir -p mindspider/DeepSentimentCrawling \
     && git clone --depth 1 "${MEDIACRAWLER_REPO}" mindspider/DeepSentimentCrawling/MediaCrawler \
     && rm -rf mindspider/DeepSentimentCrawling/MediaCrawler/.git
 
+# 去掉 channel="chrome"（容器无系统 Chrome），并加上 Docker 必需的 Chromium 参数
+COPY docker/patch_mediacrawler.py /tmp/patch_mediacrawler.py
+RUN python3 /tmp/patch_mediacrawler.py /app/mindspider/DeepSentimentCrawling/MediaCrawler \
+    && rm /tmp/patch_mediacrawler.py
+
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \
     VIRTUAL_ENV=/opt/venv
@@ -42,7 +48,8 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r mindspider/DeepSentimentCrawling/MediaCrawler/requirements.txt \
     && python -m playwright install --with-deps chromium
 
-# 写死容器内解释器，与 Windows 宿主机无关
+# 写死容器内解释器与浏览器；CDP + 系统 Chromium（自带 --no-sandbox）
 ENV MINDSPIDER_PYTHON=/opt/venv/bin/python \
-    MINDSPIDER_CDP=false \
+    MINDSPIDER_CDP=true \
+    MINDSPIDER_BROWSER=/usr/bin/chromium \
     PYTHONUNBUFFERED=1

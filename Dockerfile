@@ -37,7 +37,8 @@ COPY --from=builder /app/dist ./dist
 
 ENV PORT=3100 \
     MINDSPIDER_PYTHON=/opt/venv/bin/python \
-    MINDSPIDER_CDP=false \
+    MINDSPIDER_CDP=true \
+    MINDSPIDER_BROWSER=/usr/bin/chromium \
     PYTHONUNBUFFERED=1
 
 EXPOSE 3100 6080

@@ -123,23 +123,30 @@ async def run_hotlist(sources=None):
 
 # ------------------------- 深度爬虫（Playwright/MediaCrawler） -------------------------
 
-def _force_json_save_option():
-    """Monkey-patch PlatformCrawler：全程 JSON 输出，绕开数据库。
+_LAST_CRAWL_LOG = ""
 
-    1. 补丁 create_base_config：强制 SAVE_DATA_OPTION=json；
-    2. 拦截 subprocess.run：MindSpider 的 run_crawler 会在命令行写死
-       --save_data_option db/postgres（覆盖我们的 json 配置并触发
-       数据库初始化连接 MySQL），这里把该参数强制改为 json。
-    """
+
+def _force_json_save_option():
+    """Monkey-patch PlatformCrawler：JSON 输出 + Docker 浏览器 + 捕获失败日志。"""
+    global _LAST_CRAWL_LOG
     import subprocess as _sp
     from DeepSentimentCrawling import platform_crawler as pc_mod
 
     def patched(self, platform, keywords, crawler_type="search", max_notes=50):
-        # 复用原实现的"文本替换"思路：直接改写 MediaCrawler 的 base_config.py，
-        # 强制 SAVE_DATA_OPTION=json（桥接场景无需数据库）。
         base_config_path = self.mediacrawler_path / "config" / "base_config.py"
         keywords_str = ",".join(keywords)
         save_data_option = "json"
+        headless = os.environ.get("MINDSPIDER_HEADLESS", "true").strip().lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+        cdp = os.environ.get("MINDSPIDER_CDP", "false").strip().lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+        browser = os.environ.get("MINDSPIDER_BROWSER", "").strip()
 
         with open(base_config_path, "r", encoding="utf-8") as f:
             content = f.read()
@@ -168,21 +175,21 @@ def _force_json_save_option():
             elif line.startswith("CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = "):
                 replaced = "CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 20"
             elif line.startswith("HEADLESS = "):
-                headless = os.environ.get("MINDSPIDER_HEADLESS", "true").strip().lower()
-                replaced = f"HEADLESS = {headless in ('true', '1', 'yes')}"
+                replaced = f"HEADLESS = {headless}"
             elif line.startswith("ENABLE_CDP_MODE = "):
-                # Linux Docker 无宿主机 Chrome/Edge，默认走 Playwright Chromium。
-                # 本机有界面部署可设 MINDSPIDER_CDP=true。
-                cdp = os.environ.get("MINDSPIDER_CDP", "false").strip().lower()
-                replaced = f"ENABLE_CDP_MODE = {cdp in ('true', '1', 'yes')}"
+                replaced = f"ENABLE_CDP_MODE = {cdp}"
+            elif line.startswith("CUSTOM_BROWSER_PATH = "):
+                replaced = (
+                    f'CUSTOM_BROWSER_PATH = "{browser}"'
+                    if browser
+                    else 'CUSTOM_BROWSER_PATH = ""'
+                )
             elif line.startswith("CDP_CONNECT_EXISTING = "):
-                replaced = "CDP_CONNECT_EXISTING = False  # 桥接模式：自动启动浏览器，无需手动开调试端口"
+                replaced = "CDP_CONNECT_EXISTING = False"
             elif line.startswith("CDP_HEADLESS = "):
-                # 生产「无感」：默认无头执行。首次登录设 MINDSPIDER_HEADLESS=false。
-                headless = os.environ.get("MINDSPIDER_HEADLESS", "true").strip().lower()
-                replaced = f"CDP_HEADLESS = {headless in ('true', '1', 'yes')}  # 桥接模式：后台无感爬取"
+                replaced = f"CDP_HEADLESS = {headless}"
             elif line.startswith("USER_DATA_DIR = "):
-                replaced = 'USER_DATA_DIR = "user_data/%s_user_data_dir"'
+                replaced = 'USER_DATA_DIR = "%s_user_data_dir"'
             if replaced is not None:
                 new_lines.append(replaced)
                 if line.rstrip().endswith("("):
@@ -196,10 +203,10 @@ def _force_json_save_option():
 
     pc_mod.PlatformCrawler.create_base_config = patched
 
-    # 拦截 subprocess.run：把 --save_data_option 参数强制改为 json
     _orig_run = _sp.run
 
     def _patched_run(cmd, **kwargs):
+        global _LAST_CRAWL_LOG
         if isinstance(cmd, (list, tuple)):
             cmd = list(cmd)
             if "--save_data_option" in cmd:
@@ -209,11 +216,43 @@ def _force_json_save_option():
             if "--headless" in cmd:
                 idx = cmd.index("--headless")
                 if idx + 1 < len(cmd):
-                    headless = os.environ.get("MINDSPIDER_HEADLESS", "true").strip().lower()
-                    cmd[idx + 1] = "true" if headless in ("true", "1", "yes") else "false"
-        return _orig_run(cmd, **kwargs)
+                    h = os.environ.get("MINDSPIDER_HEADLESS", "true").strip().lower()
+                    cmd[idx + 1] = "true" if h in ("true", "1", "yes") else "false"
+            kwargs = dict(kwargs)
+            kwargs.setdefault("capture_output", True)
+            kwargs.setdefault("text", True)
+            kwargs.setdefault("encoding", "utf-8")
+            kwargs.setdefault("errors", "replace")
+        result = _orig_run(cmd, **kwargs)
+        if getattr(result, "returncode", 0) != 0:
+            tail = ""
+            for stream in (getattr(result, "stderr", None), getattr(result, "stdout", None)):
+                if stream:
+                    tail = str(stream).strip()[-1500:]
+                    if tail:
+                        break
+            _LAST_CRAWL_LOG = tail
+        else:
+            _LAST_CRAWL_LOG = ""
+        return result
 
     _sp.run = _patched_run
+
+    _orig_crawl = pc_mod.PlatformCrawler.run_crawler
+
+    def _wrapped_crawl(self, platform, keywords, login_type="qrcode", max_notes=50):
+        result = _orig_crawl(self, platform, keywords, login_type=login_type, max_notes=max_notes)
+        if not result.get("success"):
+            err = result.get("error")
+            if not err:
+                code = result.get("return_code")
+                err = f"MediaCrawler 退出码 {code}" if code is not None else "未知错误"
+            if _LAST_CRAWL_LOG:
+                err = f"{err} | {_LAST_CRAWL_LOG}"
+            result["error"] = err
+        return result
+
+    pc_mod.PlatformCrawler.run_crawler = _wrapped_crawl
 
 
 def _latest_json_files(media_crawler_root: Path, limit: int = 10) -> list:
@@ -316,10 +355,12 @@ def run_crawl(platform: str, keyword: str, max_notes: int = 20):
         platform, [keyword], login_type="qrcode", max_notes=max_notes
     )
     if not result.get("success"):
-        raise RuntimeError(
-            f"MindSpider 爬取失败（{platform}）：{result.get('error', '未知错误')}。"
-            "首次使用需扫码登录平台（请在本机有界面的环境运行，或删除 MediaCrawler/browser_data 重新登录）。"
+        detail = result.get("error") or "未知错误"
+        hint = (
+            "首次使用请：docker-compose -f docker-compose.yml -f docker-compose.qr.yml up -d，"
+            "打开 http://服务器IP:6080/vnc.html 扫码。"
         )
+        raise RuntimeError(f"MindSpider 爬取失败（{platform}）：{detail}。{hint}")
 
     # 读取 MediaCrawler 的 json 输出
     media_root = Path(crawler.mediacrawler_path)

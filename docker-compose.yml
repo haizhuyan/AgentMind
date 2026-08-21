@@ -24,10 +24,10 @@ services:
     environment:
       # 容器内端口固定 3100；宿主机端口由 SERVER_PORT 映射。
       - PORT=3100
-      # Linux 镜像自带 venv，不要填 Windows 的 python.exe
+      # Linux 镜像自带 venv + 系统 Chromium
       - MINDSPIDER_PYTHON=/opt/venv/bin/python
-      # 容器内没有本机 Chrome/Edge，关闭 CDP，改用 Playwright Chromium
-      - MINDSPIDER_CDP=false
+      - MINDSPIDER_CDP=true
+      - MINDSPIDER_BROWSER=/usr/bin/chromium
     shm_size: "2gb"
     restart: unless-stopped
     volumes:

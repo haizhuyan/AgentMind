@@ -2,7 +2,7 @@
 
 > **一句话需求 → 采集 · 清洗 · 分析 · 洞察 · 论坛协作 · 报告，全自动闭环。**
 >
-> 输入一个关键词、一句自然语言或直接粘贴舆情文本，六个 AI 智能体依次协作，产出带情感图表、风险研判与来源溯源的完整舆情报告——支持交互式 HTML / PDF / Markdown 一键导出，可直接作为交付物。
+> 输入一个关键词、一句自然语言或直接粘贴舆情文本，六个 AI 智能体依次协作，产出带情感图表、风险研判与来源溯源的完整舆情报告——支持交互式 HTML / Markdown 一键导出，可直接作为交付物。
 
 ## 🎯 产品定位
 
@@ -69,7 +69,7 @@
 - **流式生成**：SSE 实时回传，撰写过程 + DeepSeek 思考链全程可见
 - **报告 IR 化**：Markdown 解析为结构化中间表示，统一驱动多格式渲染
 - **报告溯源**：事实处标注 `[n]`，对应可点击来源列表
-- **多格式导出**：自包含交互式 HTML / A4 PDF / 纯文本复制
+- **多格式导出**：自包含交互式 HTML / 纯文本复制
 
 ### 7. 账号体系与历史回看
 
@@ -86,7 +86,7 @@
 | 场景 | 用法 |
 |------|------|
 | **舆情监测** | 输入品牌/事件关键词 → 双源采集 + 真实爬虫 → 情感分布与热度趋势 |
-| **危机公关** | 选「危机公关应对报告」模板 → 快速研判风险等级与核心诉求 → 导出 PDF 上报 |
+| **危机公关** | 选「危机公关应对报告」模板 → 快速研判风险等级与核心诉求 → 导出 HTML 上报 |
 | **品牌声誉** | 选「企业品牌声誉分析报告」模板 → 多模型交叉验证 → 声誉健康度结论 |
 | **事件复盘** | 事件平息后选「事件舆情复盘报告」模板 → 完整回顾 + 结论溯源 |
 
@@ -112,7 +112,7 @@ npm run dev:all        # 3. 同时启动前后端
 |------|------|
 | `LLM2_*` ~ `LLM12_*` | 多模型协作（2 个以上启用并行集成 + 交叉复核） |
 | `LLM_PRIMARY` | 指定主模型（负责清洗/洞察/报告/主持） |
-| `TIANAPI_KEY` | 右侧实时热搜榜 |
+| `TIANAPI_KEY` | 实时热搜榜（工作台空态展示，点击热点一键分析） |
 | `JWT_SECRET` | 账号体系签名密钥（**生产必改**随机长串） |
 | `MINDSPIDER_ENABLED=true` | 启用真实社媒爬虫数据源（见下节） |
 
@@ -155,7 +155,7 @@ playwright install chromium                                # 浏览器驱动
 |------|------|
 | 前端 | React 18 + Vite 5 |
 | 图表 | ECharts 5 |
-| 导出 | html2pdf.js / 交互式 HTML |
+| 导出 | 交互式 HTML（自包含，内嵌 ECharts） |
 | 后端 | Express 4（Node.js ≥ 22.5，使用内置 `node:sqlite`） |
 | 账号 | scrypt 密码哈希 + HS256 JWT（零外部依赖） |
 | 数据源 | Bocha / Anspire / 天行热搜 / MindSpider（Playwright + MediaCrawler） |
@@ -181,20 +181,23 @@ node server/index.js         # 后端托管 dist/，单进程即可上线
 ## 📁 项目结构（开发者）
 
 ```
-server/                 # Node 后端：API 代理 + 账号 + 记录 + 爬虫桥
-├── index.js            # 路由：/api/collect /api/llm /api/auth /api/records ...
-├── auth.js             # scrypt + JWT + requireAuth
-├── db.js               # node:sqlite（users / records 表）
+server/                  # Node 后端：API 代理 + 账号 + 记录 + 爬虫队列 + 爬虫桥
+├── index.js             # 路由：/api/collect /api/llm /api/auth /api/records /api/crawl …
+├── auth.js              # scrypt + JWT + requireAuth
+├── db.js                # node:sqlite（users / records 表，含步骤态与流水线快照）
+├── crawlQueue.js         # 爬虫后台任务队列（单工，生产「无感」爬取）
 ├── bocha.js anspire.js hotlist.js   # 搜索/热搜封装
 └── mindspider.js + mindspider_bridge.py  # MindSpider 爬虫桥（Node ↔ Python）
-mindspider/             # 自带 Python 爬虫组件（MediaCrawler 子模块）
+mindspider/              # 自带 Python 爬虫组件（MediaCrawler 子模块）
 src/
-├── App.jsx             # 路由守卫 + 工作台（左中右三栏）
-├── agents/             # 六智能体（采集/清洗/分析/洞察/论坛/报告）
-├── services/           # 编排调度 + LLM/采集/账号 API + 离线演示
-├── components/         # LandingPage / InputPanel / AgentFlow / ChartPanel / ReportPanel / RecordsPanel / HotList ...
-├── report/             # 4 套报告模板 + IR 中间表示
-└── utils/              # NLP 解析 / 趋势推演 / 本地情感词典 / HTML / PDF 导出
+├── App.jsx              # 路由守卫 + 对话式工作台（左右布局）
+├── agents/              # 六智能体（采集/清洗/分析/洞察/论坛/报告）
+├── services/            # 编排调度（断点续跑）+ LLM/采集/账号 API + 离线演示
+├── landing/             # 产品落地页（Navbar/Hero/Features/Pipeline/Scenarios/CTA/Footer）
+├── workbench/           # 对话式工作台（侧栏/顶栏/消息流/输入区/热搜空态）
+├── components/          # 共享组件（LoginModal / agentDetail / ChartPanel / ReportPanel）
+├── report/              # 4 套报告模板 + IR 中间表示
+└── utils/               # NLP 解析 / 趋势推演 / 本地情感词典 / 流程产物导出 / HTML 导出
 ```
 
 ---

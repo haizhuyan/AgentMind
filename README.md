@@ -118,36 +118,60 @@ npm run dev:all        # 3. 同时启动前后端
 
 ## 🕷️ MindSpider 真实爬虫（可选数据源）
 
-AgentMind 自带 `mindspider/` Python 组件，可在 7 大社媒平台按关键词深度爬取真实内容，**无需 MySQL**：
+AgentMind 自带 `mindspider/`（含 MediaCrawler），可在微博 / 小红书 / 抖音 / 快手 / B站 / 贴吧 / 知乎按关键词深度爬取真实内容，**无需 MySQL**。
+
+前端输入区右上角「数据源」切到 **MindSpider 爬虫**，选平台后开始分析。登录用户提交后任务进**后台队列**（单工），完成后自动接续流水线。
+
+| 配置 | 说明 |
+|------|------|
+| `MINDSPIDER_ENABLED=true` | 启用爬虫数据源 |
+| `MINDSPIDER_PLATFORM=weibo` | 默认平台（也可前端选） |
+| `MINDSPIDER_PYTHON` | Python 解释器（Docker 内已设为 `/opt/venv/bin/python`） |
+| `MINDSPIDER_HEADLESS` | `true` 日常无头；`false` 扫码时有界面（见下） |
+
+调试：`GET /api/mindspider/status`、`GET /api/mindspider/hotlist`
+
+### 本地开发（非 Docker）
 
 ```bash
-git submodule update --init --recursive                    # 拉取 MediaCrawler 爬虫子模块
-pip install -r mindspider/requirements-bridge.txt          # 桥接最小依赖（含 cp313 wheel）
-playwright install chromium                                # 浏览器驱动
-# .env: MINDSPIDER_ENABLED=true  MINDSPIDER_PLATFORM=weibo
+git submodule update --init --recursive
+pip install -r mindspider/requirements-bridge.txt
+playwright install chromium
+# .env：MINDSPIDER_ENABLED=true  MINDSPIDER_PLATFORM=weibo
 ```
 
-- 前端输入区右上角「数据源」切换为 MindSpider 爬虫，选择平台后开始分析
-- **生产「无感」模式**：登录用户提交爬虫后任务进入**后台队列**（单工执行、不弹浏览器窗口），前端轮询状态，完成后自动通知（「✅ 爬虫任务完成」横幅）并接续流水线；任务 API：`POST /api/crawl/job`、`GET /api/crawl/job/:id`、`GET /api/crawl/status`
-- **首次登录（一次性）**：`.env` 设 `MINDSPIDER_HEADLESS=false` 启动，提交一次任务在弹出的 Chrome 中扫码；登录态保存在本机，之后改回 `MINDSPIDER_HEADLESS=true`（默认）全程无窗口
-- 调试端点：`GET /api/mindspider/hotlist`（13 平台聚合热搜）、`GET /api/mindspider/status`（环境自检）
+首次登录：`.env` 设 `MINDSPIDER_HEADLESS=false`，提交一次爬虫任务，在弹出的浏览器里扫码；之后改回 `true`。
 
-### 生产部署架构
+### Docker 生产：扫码 vs 日常（必读）
 
+登录态保存在 Docker volume `crawler-browser-data`（`browser_data`），**与镜像重建无关**。两种启动方式只差「能不能看见浏览器扫码」：
+
+| 对比项 | 扫码模式（首次 / 登录过期） | 日常爬取 |
+|--------|---------------------------|----------|
+| 命令 | `docker-compose -f docker-compose.yml -f docker-compose.qr.yml up -d` | `docker-compose up -d` |
+| 浏览器 | 有界面（`MINDSPIDER_HEADLESS=false`） | 无头（默认） |
+| VNC | 映射 **6080**，打开桌面扫码 | 不开放 6080 |
+| 用途 | 写登录态到 volume | 复用已有登录态爬数据 |
+
+**推荐流程：**
+
+```bash
+# 1）首次或登录失效：开扫码模式
+docker-compose -f docker-compose.yml -f docker-compose.qr.yml up -d
+
+# 2）浏览器打开（用服务器公网 IP，不要用站点域名）
+#    http://服务器公网IP:6080/vnc.html  → Connect
+#    在网站里用 MindSpider 提交一次爬取，VNC 桌面里出现登录窗 → 手机扫码
+
+# 3）扫码成功、能返回数据后，切回日常（不要再带 qr 文件）
+docker-compose up -d
 ```
-浏览器用户 ──► Node 应用（任意云主机/容器）
-                  │  POST /api/crawl/job（立即返回任务 id）
-                  ▼
-             爬虫任务队列（单工；多实例部署换 Redis/BullMQ）
-                  ▼
-         Python 桥接 → Chrome/Edge CDP 无头模式
-                  ▼
-     平台登录态（browser_data，爬虫机本地，需持久化）
-```
 
-- 爬虫必须跑在**装有 Chrome/Edge 且已扫码登录的机器**上；Web 应用与爬虫机可分离部署（`MINDSPIDER_ROOT` 指向爬虫机上的组件路径）
-- 队列并发=1：同一时间只开一个浏览器，避免资源争抢与风控；水平扩展 = 一台爬虫机一个 worker
-- 登录态每 1-2 周巡检一次（`MINDSPIDER_HEADLESS=false` 重新扫码）
+说明：
+
+- 域名下的 `/vnc.html` 一般打不开：Nginx 通常只反代 3100，扫码请用 `http://公网IP:6080/vnc.html`
+- **禁止** `docker-compose down -v`（会清空登录态和分析库）
+- 若报 Chromium `profile appears to be in use`：`docker-compose restart` 后重试（或删 `browser_data` 下的 `SingletonLock`，勿删整个目录）
 
 ## 📦 技术栈
 
@@ -163,14 +187,77 @@ playwright install chromium                                # 浏览器驱动
 
 ## 🚢 部署
 
+### 本机 / 简单上线（无爬虫 Docker）
+
 ```bash
-npm run build                # Vite 构建到 dist/
-node server/index.js         # 后端托管 dist/，单进程即可上线
+npm run build
+node server/index.js          # 托管 dist/，默认 :3100
 ```
 
-- **Render**：仓库自带 `render.yaml` Blueprint，一键部署
-- **Docker**：仓库自带 `Dockerfile` + `docker-compose.yml`
-- 生产注意：`.env` 设置随机 `JWT_SECRET`；Node ≥ 22.5；爬虫数据源需在**有图形界面的机器**上运行并完成首次扫码登录；建议通过反向代理暴露 `/api` 并加 HTTPS
+- Render：仓库自带 `render.yaml`
+- 生产：改随机 `JWT_SECRET`；Node ≥ 22.5；HTTPS 反代 `/api`
+
+### Docker 生产部署（推荐，含 MindSpider）
+
+镜像分两层，**日常更新只重建应用层**，Chromium / Python / MediaCrawler 在底座里：
+
+| 镜像 | 何时构建 | 内容 |
+|------|----------|------|
+| `agentmind-crawler-base:latest` | 首次上机，或爬虫依赖变更时 | Python venv、Playwright Chromium、MediaCrawler、xvfb/noVNC |
+| `agentmind:latest` | 每次 `git pull` 发版 | Node 应用 + 前端 `dist` |
+
+**首次上服务器：**
+
+```bash
+# 1. 准备 .env（含 LLM、搜索、JWT_SECRET、MINDSPIDER_ENABLED=true）
+cp .env.example .env && vim .env
+
+# 2. 构建底座（较慢，一般只做一次）
+docker build -f Dockerfile.base -t agentmind-crawler-base:latest .
+
+# 3. 构建并启动应用
+docker-compose build
+docker-compose up -d
+
+# 4. 按上一节「扫码模式」完成平台登录，再切回日常
+docker-compose -f docker-compose.yml -f docker-compose.qr.yml up -d
+# …扫码成功后…
+docker-compose up -d
+```
+
+**日常发版（不会丢登录态）：**
+
+```bash
+git pull
+docker-compose down          # 不要加 -v
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+持久化 volume（重建镜像也保留）：
+
+| Volume | 内容 |
+|--------|------|
+| `agentmind-data` | 账号、分析记录（SQLite） |
+| `crawler-browser-data` | 平台登录态（扫码结果） |
+| `crawler-user-data` / `crawler-data` | 爬虫辅助数据与 JSON 输出 |
+
+防火墙需放行：`3100`（站点）、扫码时临时放行 `6080`（noVNC）。
+
+### 爬虫架构示意
+
+```
+浏览器用户 ──► Node（:3100）── POST /api/crawl/job
+                  │
+                  ▼
+             单工任务队列
+                  ▼
+         Python 桥接 → Chromium（无头 / 扫码时有界面+VNC）
+                  ▼
+         browser_data volume（登录态，须持久化）
+```
+
+---
 
 ## 🔐 安全说明
 

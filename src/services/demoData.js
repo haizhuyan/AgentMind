@@ -17,9 +17,27 @@
 // 记录最近一次演示所用关键词（清洗/分析阶段的 prompt 不含关键词时兜底）
 let lastKeyword = '胖东来正式回应“招聘20名刑释人员”'
 
-/** 模拟网络时延，让演示保留「思考」的节奏感（毫秒） */
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+/** 模拟网络时延，让演示保留「思考」的节奏感（毫秒）；signal 中断时立刻结束。 */
+function delay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      const err = new Error('分析已中断')
+      err.name = 'AbortError'
+      reject(err)
+      return
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      const err = new Error('分析已中断')
+      err.name = 'AbortError'
+      reject(err)
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 /** 从 prompt 文本中尽力提取关键词，失败则回落到最近一次关键词 */
@@ -404,11 +422,11 @@ function pdCritic(model, round) {
 }
 
 /** 真实案例·报告：流式回放真实报告（思考过程 + 6 章节）。 */
-async function pdReportStream({ onToken, onReasoning }) {
+async function pdReportStream({ onToken, onReasoning, signal }) {
   if (onReasoning) {
     for (const t of PD_REPORT.reasoning) {
       onReasoning(t)
-      await delay(220)
+      await delay(220, signal)
     }
   }
   let full = ''
@@ -417,7 +435,7 @@ async function pdReportStream({ onToken, onReasoning }) {
     const size = 12
     for (let i = 0; i < text.length; i += size) {
       onToken?.(text.slice(i, i + size))
-      await delay(20)
+      await delay(20, signal)
     }
   }
   for (const sec of PD_REPORT.sections) {
@@ -583,8 +601,8 @@ function fakeHost(keyword, round = 1) {
  * @param {string} [model] 调用模型 id（用于分析/论坛按模型返回真实差异化产物）
  * @returns {Promise<string>}
  */
-export async function demoLLM({ system = '', user = '', model } = {}) {
-  await delay(300 + Math.random() * 400)
+export async function demoLLM({ system = '', user = '', model, signal } = {}) {
+  await delay(300 + Math.random() * 400, signal)
   const featured = isFeatured(user)
   const keyword = extractKeyword(user)
 
@@ -621,10 +639,10 @@ export async function demoLLM({ system = '', user = '', model } = {}) {
  * @param {(t:string)=>void} [params.onReasoning]
  * @returns {Promise<string>} 完整 Markdown
  */
-export async function demoLLMStream({ system = '', user = '', onToken, onReasoning }) {
+export async function demoLLMStream({ system = '', user = '', onToken, onReasoning, signal }) {
   // 特色真实案例：流式回放真实报告
   if (isFeatured(user)) {
-    return pdReportStream({ onToken, onReasoning })
+    return pdReportStream({ onToken, onReasoning, signal })
   }
 
   const keyword = extractKeyword(user)
@@ -649,7 +667,7 @@ export async function demoLLMStream({ system = '', user = '', onToken, onReasoni
     ]
     for (const t of thoughts) {
       onReasoning(t)
-      await delay(200)
+      await delay(200, signal)
     }
   }
 
@@ -678,7 +696,7 @@ export async function demoLLMStream({ system = '', user = '', onToken, onReasoni
     const size = 12
     for (let i = 0; i < text.length; i += size) {
       onToken?.(text.slice(i, i + size))
-      await delay(24)
+      await delay(24, signal)
     }
   }
 

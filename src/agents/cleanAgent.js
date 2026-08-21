@@ -1,4 +1,4 @@
-import { callLLM, parseJSON } from '../services/llmService.js'
+import { callLLM, parseJSON, throwIfLLMAborted } from '../services/llmService.js'
 
 /**
  * 清洗 Agent
@@ -25,8 +25,8 @@ const SYSTEM_PROMPT = `你是一个舆情数据清洗专家。请对给定的舆
 
 // 单批送入 LLM 的最大条数（控制单请求体积，规避超时）
 const CHUNK_SIZE = 15
-// LLM 并发批次上限（规避供应商限流）
-const MAX_CONCURRENCY = 3
+// LLM 并发批次上限：组织级并发常为 1，超限即 429；后端亦有串行闸门兜底
+const MAX_CONCURRENCY = 1
 // 单条文本最大保留长度（截断超长正文，降低 token 消耗）
 const MAX_ITEM_LEN = 300
 
@@ -84,14 +84,17 @@ async function runWithConcurrency(tasks, limit) {
     while (cursor < tasks.length) {
       const idx = cursor++
       try {
+        throwIfLLMAborted()
         results[idx] = { status: 'fulfilled', value: await tasks[idx]() }
       } catch (err) {
+        if (err?.name === 'AbortError') throw err
         results[idx] = { status: 'rejected', reason: err }
       }
     }
   }
   const workers = Array.from({ length: Math.min(limit, tasks.length) }, worker)
-  await Promise.all(workers)
+  await Promise.allSettled(workers)
+  throwIfLLMAborted()
   return results
 }
 
@@ -126,7 +129,9 @@ export async function cleanAgent(rawList, model) {
     try {
       const cleaned = await cleanChunk(pre, model)
       return cleaned.length ? cleaned : pre
-    } catch {
+    } catch (err) {
+      throwIfLLMAborted()
+      if (err?.name === 'AbortError') throw err
       // LLM 失败时退回预清洗结果，保证流程不中断
       return pre
     }

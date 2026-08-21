@@ -1,4 +1,4 @@
-import { callLLM, parseJSON } from '../services/llmService.js'
+import { callLLM, parseJSON, throwIfLLMAborted } from '../services/llmService.js'
 
 /**
  * debateService.js —— 多智能体交叉验证/辩论服务
@@ -62,6 +62,7 @@ export async function debateService({ keyword, analyze, insight, validators }) {
 
   // 各验证模型并行独立复核；失败的模型跳过。
   const settled = await Promise.allSettled(list.map((m) => criticOne(m, user)))
+  throwIfLLMAborted()
 
   const critics = []
   const reviewers = []

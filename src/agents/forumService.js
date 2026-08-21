@@ -1,4 +1,4 @@
-import { callLLM, parseJSON } from '../services/llmService.js'
+import { callLLM, parseJSON, throwIfLLMAborted } from '../services/llmService.js'
 import { forumHost } from './forumHost.js'
 
 /**
@@ -110,6 +110,7 @@ export async function forumService({
         })
       )
     )
+    throwIfLLMAborted()
 
     const speeches = []
     const critics = []
@@ -168,6 +169,8 @@ export async function forumService({
       })
       lastGuidance = guidance
     } catch (err) {
+      throwIfLLMAborted()
+      if (err?.name === 'AbortError') throw err
       guidance = {
         summary: `主持人本轮生成失败：${err?.message || '未知错误'}`,
         consensus: [],

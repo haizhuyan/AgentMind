@@ -9,6 +9,7 @@ import { trendPredict } from '../utils/trendPredict.js'
 import { ENABLE_DEBATE, FORUM_CONFIG } from '../config.js'
 import { getTemplate, DEFAULT_TEMPLATE_ID } from '../report/templates.js'
 import { markdownToIR } from '../report/ir.js'
+import { createAbortError } from '../services/llmService.js'
 
 /**
  * agentOrchestrator.js —— 多智能体调度器
@@ -44,6 +45,7 @@ export const AGENT_STEPS = [
  * @param {string} [params.templateId] 报告模板 id
  * @param {string} [params.collectSource] 数据源 search | mindspider
  * @param {string} [params.collectPlatform] mindspider 平台
+ * @param {AbortSignal} [params.signal] 中断信号（停止分析时立刻跳出流水线）
  * @returns {Promise<Object>} 完整分析结果
  */
 export async function runAgentFlow({
@@ -55,9 +57,14 @@ export async function runAgentFlow({
   templateId,
   collectSource,
   collectPlatform,
-  resume
+  resume,
+  signal
 }) {
   const report = onStep || (() => {})
+  const checkAbort = () => {
+    if (signal?.aborted) throw createAbortError()
+  }
+  checkAbort()
 
   // ---- 模型角色分配 ----
   const selected = Array.isArray(models) && models.length ? models : [undefined]
@@ -85,6 +92,7 @@ export async function runAgentFlow({
   const savedDetailOf = (stepId, fallback) => savedDetails[stepId]?.detail ?? fallback
 
   // ---- 1. 采集 ----
+  checkAbort()
   if (pipeline.raw) {
     emit('collect', 'done', savedDetailOf('collect', { count: pipeline.raw.length, mode: '续跑恢复', samples: pipeline.raw.slice(0, 8) }))
   } else {
@@ -121,6 +129,7 @@ export async function runAgentFlow({
   const sources = pipeline.sources
 
   // ---- 2. 清洗 ----
+  checkAbort()
   if (pipeline.cleaned) {
     emit('clean', 'done', savedDetailOf('clean', { before: raw.length, after: pipeline.cleaned.length, samples: pipeline.cleaned.slice(0, 6) }))
   } else {
@@ -135,6 +144,7 @@ export async function runAgentFlow({
   const cleaned = pipeline.cleaned
 
   // ---- 3. 分析 ----
+  checkAbort()
   if (pipeline.analyze) {
     emit('analyze', 'done', savedDetailOf('analyze', {
       sentiment: pipeline.analyze.sentiment,
@@ -155,6 +165,7 @@ export async function runAgentFlow({
   const analyze = pipeline.analyze
 
   // ---- 4. 洞察 ----
+  checkAbort()
   if (pipeline.insight) {
     emit('insight', 'done', savedDetailOf('insight', {
       trend: pipeline.insight.trend,
@@ -175,6 +186,7 @@ export async function runAgentFlow({
   const insight = pipeline.insight
 
   // ---- 5. 论坛协作 / 交叉验证 ----
+  checkAbort()
   let debate = null
   if (ENABLE_DEBATE) {
     if (pipeline.debate) {
@@ -259,6 +271,7 @@ export async function runAgentFlow({
   const trend = trendPredict({ analyze, insight })
 
   // ---- 6. 报告（流式生成）----
+  checkAbort()
   const template = getTemplate(templateId || DEFAULT_TEMPLATE_ID)
   let reportText = pipeline.reportText
   if (reportText) {

@@ -3,7 +3,7 @@ import LoginModal from './components/LoginModal.jsx'
 import Landing from './landing/Landing.jsx'
 import Workbench from './workbench/Workbench.jsx'
 import { runAgentFlow } from './services/agentOrchestrator.js'
-import { fetchModels } from './services/llmService.js'
+import { fetchModels, setLLMAbortSignal, isAbortError, createAbortError, sleep } from './services/llmService.js'
 import { useDemoMode } from './services/demoMode.js'
 import { DEFAULT_TEMPLATE_ID } from './report/templates.js'
 import { MINDSPIDER_CONFIG } from './config.js'
@@ -73,6 +73,8 @@ export default function App() {
   const [history, setHistory] = useState([])
   const [collectSource, setCollectSource] = useState(MINDSPIDER_CONFIG.source)
   const [collectPlatform, setCollectPlatform] = useState(MINDSPIDER_CONFIG.platform)
+  const abortRef = useRef(null)
+  const runIdRef = useRef(0)
 
   // ---------- 会话恢复与 401 处理 ----------
   useEffect(() => {
@@ -156,8 +158,12 @@ export default function App() {
 
   // 新建对话：清空当前会话（默认新用户进入即处于此状态）
   function handleNewChat() {
-    if (loading) return
+    abortRef.current?.abort()
+    abortRef.current = null
+    setLLMAbortSignal(null)
+    runIdRef.current += 1
     reset()
+    setLoading(false)
     setViewRecord(null)
     setActiveRecordId(null)
     setActiveKeyword('')
@@ -165,7 +171,17 @@ export default function App() {
     stepStateRef.current = { state: {}, pipeline: {} }
   }
 
+  function handleStop() {
+    abortRef.current?.abort()
+  }
+
   async function handleAnalyze({ keyword, rawText, resume }) {
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
+    setLLMAbortSignal(ac.signal)
+    const runId = ++runIdRef.current
+
     reset()
     setViewRecord(null)
     setLoading(true)
@@ -214,6 +230,7 @@ export default function App() {
         collectSource,
         collectPlatform,
         resume: pipelineResume,
+        signal: ac.signal,
         onStep: (stepId, status, detail, pipeline) => {
           setStatuses((prev) => ({
             ...prev,
@@ -293,8 +310,10 @@ export default function App() {
 
         // 轮询任务状态
         while (job && (job.status === 'queued' || job.status === 'running')) {
-          await new Promise((r) => setTimeout(r, 3000))
+          if (ac.signal.aborted) throw createAbortError()
+          await sleep(3000, ac.signal)
           job = await apiGetCrawlJob(jobId).catch(() => null)
+          if (ac.signal.aborted) throw createAbortError()
           if (!job) throw new Error('爬虫任务丢失，请重试。')
           persistCollect('running', {
             _running: true,
@@ -333,6 +352,7 @@ export default function App() {
         )
       }
     } catch (err) {
+      if (runId !== runIdRef.current) return
       setStatuses((prev) => {
         const next = { ...prev }
         Object.keys(next).forEach((k) => {
@@ -342,7 +362,11 @@ export default function App() {
         })
         return next
       })
-      setError(err.message || '分析过程发生异常')
+      setError(
+        isAbortError(err)
+          ? '分析已中断。可点历史记录继续，或重新发起分析。'
+          : err.message || '分析过程发生异常'
+      )
       // 失败收尾：保留流水线快照，供「继续」断点续跑
       if (user && recordId) {
         apiFinishRecord(recordId, 'failed')
@@ -350,7 +374,11 @@ export default function App() {
           .catch(() => {})
       }
     } finally {
-      setLoading(false)
+      if (runId === runIdRef.current) {
+        setLoading(false)
+        if (abortRef.current === ac) abortRef.current = null
+        setLLMAbortSignal(null)
+      }
     }
   }
 
@@ -581,6 +609,7 @@ export default function App() {
       onToggleDemo={handleToggleDemo}
       onLoginStatusClick={handleLoginStatusClick}
       onAnalyze={handleAnalyze}
+      onStop={handleStop}
       onHome={handleHome}
       onLogout={handleLogout}
       notice={notice}

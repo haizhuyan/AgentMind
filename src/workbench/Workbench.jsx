@@ -42,7 +42,8 @@ export default function Workbench({
   onClearHistory,
   onToggleDemo,
   onLoginStatusClick,
-      onAnalyze,
+  onAnalyze,
+  onStop,
   onHome,
   onLogout,
   notice,
@@ -153,6 +154,14 @@ export default function Workbench({
             )}
           </div>
           <div className="topbar-right">
+            {loading && (
+              <button className="icon-btn stop-btn" title="停止分析" onClick={onStop}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="1.5" />
+                </svg>
+                停止
+              </button>
+            )}
             <button className="icon-btn" title="复制报告" onClick={handleShare} disabled={!data}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.5"/>
@@ -207,6 +216,7 @@ export default function Workbench({
           <WorkbenchInput
             loading={loading}
             onAnalyze={onAnalyze}
+            onStop={onStop}
             models={models}
             primaryId={primaryId}
             onSetPrimary={onSetPrimary}

@@ -1,4 +1,4 @@
-import { callLLM, parseJSON } from '../services/llmService.js'
+import { callLLM, parseJSON, throwIfLLMAborted } from '../services/llmService.js'
 import { analyzeLocalSentiment, fuseSentiment } from '../utils/localSentiment.js'
 import { LOCAL_SENTIMENT_CONFIG } from '../config.js'
 import { isDemoMode } from '../services/demoMode.js'
@@ -112,6 +112,7 @@ export async function analyzeAgent(cleanedList, models) {
   const settled = await Promise.allSettled(
     list.map((m) => analyzeOne(cleanedList, m))
   )
+  throwIfLLMAborted()
 
   const results = []
   const contributors = []

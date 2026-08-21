@@ -19,6 +19,14 @@ import { anspireSearch } from './anspire.js'
 import { fetchHotList } from './hotlist.js'
 import { fetchHotListBySpider, crawlBySpider, checkMindSpiderEnv } from './mindspider.js'
 import { createCrawlJob, getCrawlJob, getCrawlQueueStatus } from './crawlQueue.js'
+import {
+  createSerialGate,
+  createCallController,
+  fetchLlmUpstream,
+  abortReason,
+  isAbortError,
+  createAbortError
+} from './llmGate.js'
 import { hashPassword, verifyPassword, signToken, requireAuth } from './auth.js'
 import {
   createUser,
@@ -90,6 +98,10 @@ function buildModels() {
 
 const MODELS = buildModels()
 const LLM_TIMEOUT = Number(process.env.LLM_TIMEOUT || 100000)
+// 组织级并发上限（常见为 1）。超限会 429：max organization concurrency。
+const LLM_CONCURRENCY = Math.max(1, Number(process.env.LLM_CONCURRENCY || 1))
+const LLM_MAX_RETRIES = Math.max(0, Number(process.env.LLM_MAX_RETRIES || 5))
+const llmGate = createSerialGate(LLM_CONCURRENCY)
 
 // 按 id 解析模型配置；未指定或找不到时回退到第一个可用模型。
 function resolveModel(id) {
@@ -490,6 +502,32 @@ app.get('/api/crawl/status', requireAuth, (req, res) => {
   res.json(getCrawlQueueStatus())
 })
 
+function llmAbortReply(res, signal, streamSend) {
+  const reason = abortReason(signal)
+  if (reason === 'client') {
+    if (!res.writableEnded) res.end()
+    return
+  }
+  const msg =
+    reason === 'timeout'
+      ? `LLM 调用超时（>${LLM_TIMEOUT / 1000}s）`
+      : 'LLM 调用已中断'
+  if (streamSend) {
+    try {
+      streamSend('error', { error: msg })
+    } catch {
+      /* 客户端已断开 */
+    }
+    if (!res.writableEnded) res.end()
+    return
+  }
+  if (res.headersSent) {
+    if (!res.writableEnded) res.end()
+    return
+  }
+  res.status(reason === 'timeout' ? 504 : 499).json({ error: msg })
+}
+
 // ---------- LLM 代理 ----------
 app.post('/api/llm', async (req, res) => {
   const { system, user, json = false, temperature, model: modelId } = req.body || {}
@@ -511,40 +549,43 @@ app.post('/api/llm', async (req, res) => {
   }
   if (json) body.response_format = { type: 'json_object' }
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT)
+  const call = createCallController(req, res, LLM_TIMEOUT)
 
   try {
-    const r = await fetch(m.baseURL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${m.apiKey}`
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    })
+    const result = await llmGate.run(
+      () =>
+        fetchLlmUpstream({
+          url: m.baseURL,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${m.apiKey}`
+          },
+          body: JSON.stringify(body),
+          signal: call.signal,
+          maxRetries: LLM_MAX_RETRIES
+        }),
+      { signal: call.signal }
+    )
 
-    if (!r.ok) {
-      const text = await r.text().catch(() => '')
-      return res
-        .status(502)
-        .json({ error: `LLM 调用失败（HTTP ${r.status}）：${text.slice(0, 200)}` })
+    if (result.errorStatus) {
+      return res.status(502).json({
+        error: `LLM 调用失败（HTTP ${result.errorStatus}）：${String(result.errorText || '').slice(0, 200)}`
+      })
     }
 
-    const data = await r.json()
+    const data = await result.response.json()
     const content = data?.choices?.[0]?.message?.content
     if (!content) {
       return res.status(502).json({ error: 'LLM 返回内容为空' })
     }
     res.json({ content: content.trim(), model: m.id, label: m.label })
   } catch (err) {
-    if (err.name === 'AbortError') {
-      return res.status(504).json({ error: `LLM 调用超时（>${LLM_TIMEOUT / 1000}s）` })
+    if (isAbortError(err) || abortReason(call.signal)) {
+      return llmAbortReply(res, call.signal)
     }
     res.status(502).json({ error: `LLM 调用异常：${err.message}` })
   } finally {
-    clearTimeout(timer)
+    call.dispose()
   }
 })
 
@@ -568,6 +609,7 @@ app.post('/api/llm/stream', async (req, res) => {
   res.flushHeaders?.()
 
   const send = (event, data) => {
+    if (res.writableEnded) return
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
   }
 
@@ -581,73 +623,79 @@ app.post('/api/llm/stream', async (req, res) => {
     ]
   }
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT)
+  const call = createCallController(req, res, LLM_TIMEOUT)
 
   try {
-    const r = await fetch(m.baseURL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${m.apiKey}`
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    })
+    await llmGate.run(
+      async () => {
+        const result = await fetchLlmUpstream({
+          url: m.baseURL,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${m.apiKey}`
+          },
+          body: JSON.stringify(body),
+          signal: call.signal,
+          maxRetries: LLM_MAX_RETRIES
+        })
 
-    if (!r.ok || !r.body) {
-      const text = await r.text().catch(() => '')
-      send('error', { error: `LLM 调用失败（HTTP ${r.status}）：${text.slice(0, 200)}` })
-      return res.end()
-    }
-
-    const reader = r.body.getReader()
-    const decoder = new TextDecoder('utf-8')
-    let buffer = ''
-    let full = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-
-      // 按 SSE 行解析 OpenAI 流式格式（data: {...}）
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed.startsWith('data:')) continue
-        const payload = trimmed.slice(5).trim()
-        if (payload === '[DONE]') continue
-
-        try {
-          const json = JSON.parse(payload)
-          const delta = json?.choices?.[0]?.delta || {}
-          if (delta.reasoning_content) {
-            send('reasoning', { text: delta.reasoning_content })
-          }
-          if (delta.content) {
-            full += delta.content
-            send('token', { text: delta.content })
-          }
-        } catch {
-          // 忽略无法解析的分片
+        if (result.errorStatus || !result.response?.body) {
+          send('error', {
+            error: `LLM 调用失败（HTTP ${result.errorStatus || 502}）：${String(result.errorText || '').slice(0, 200)}`
+          })
+          return
         }
-      }
-    }
 
-    send('done', { content: full.trim() })
-    res.end()
+        const reader = result.response.body.getReader()
+        const decoder = new TextDecoder('utf-8')
+        let buffer = ''
+        let full = ''
+
+        while (true) {
+          if (call.signal.aborted) throw createAbortError()
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+
+          // 按 SSE 行解析 OpenAI 流式格式（data: {...}）
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed.startsWith('data:')) continue
+            const payload = trimmed.slice(5).trim()
+            if (payload === '[DONE]') continue
+
+            try {
+              const json = JSON.parse(payload)
+              const delta = json?.choices?.[0]?.delta || {}
+              if (delta.reasoning_content) {
+                send('reasoning', { text: delta.reasoning_content })
+              }
+              if (delta.content) {
+                full += delta.content
+                send('token', { text: delta.content })
+              }
+            } catch {
+              // 忽略无法解析的分片
+            }
+          }
+        }
+
+        send('done', { content: full.trim() })
+      },
+      { signal: call.signal }
+    )
+    if (!res.writableEnded) res.end()
   } catch (err) {
-    const msg =
-      err.name === 'AbortError'
-        ? `LLM 调用超时（>${LLM_TIMEOUT / 1000}s）`
-        : `LLM 调用异常：${err.message}`
-    send('error', { error: msg })
-    res.end()
+    if (isAbortError(err) || abortReason(call.signal)) {
+      return llmAbortReply(res, call.signal, send)
+    }
+    send('error', { error: `LLM 调用异常：${err.message}` })
+    if (!res.writableEnded) res.end()
   } finally {
-    clearTimeout(timer)
+    call.dispose()
   }
 })
 

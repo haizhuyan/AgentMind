@@ -10,6 +10,7 @@ import { REPORT_TEMPLATES } from '../report/templates.js'
 export default function WorkbenchInput({
   loading,
   onAnalyze,
+  onStop,
   models = [],
   primaryId,
   onSetPrimary,
@@ -241,9 +242,16 @@ export default function WorkbenchInput({
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-            <button className="send-btn" title="发送" onClick={submit} disabled={loading}>
+            <button
+              type="button"
+              className={`send-btn ${loading ? 'stop' : ''}`}
+              title={loading ? '停止分析' : '发送'}
+              onClick={loading ? onStop : submit}
+            >
               {loading ? (
-                <span className="spinner" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,0.3)' }} />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="1.5" />
+                </svg>
               ) : (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>

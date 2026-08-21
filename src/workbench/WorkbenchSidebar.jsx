@@ -49,7 +49,7 @@ export default function WorkbenchSidebar({
             <span className="sub">MULTI-AGENT OSINT</span>
           </div>
         </button>
-        <button className="new-chat-btn" onClick={onNewChat} disabled={loading}>
+        <button className="new-chat-btn" onClick={onNewChat}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M12 5L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
             <path d="M5 12L19 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>

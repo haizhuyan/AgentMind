@@ -1,20 +1,43 @@
+# 日常发布（git pull 后）：
+#   docker-compose down
+#   docker-compose build --no-cache
+#   docker-compose up -d
+# 上面 --no-cache 只重建应用层。Chromium/Python/MediaCrawler 在
+#   agentmind-crawler-base:latest
+# 里写死，不会跟着重建。
+#
+# 底座只在换爬虫依赖时重建：
+#   docker build -f Dockerfile.base -t agentmind-crawler-base:latest .
+#
+# 禁止 docker-compose down -v（会删掉登录态和分析记录）
 services:
   agentmind:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agentmind:latest
     container_name: agentmind
     ports:
       - "${SERVER_PORT:-3100}:3100"
     env_file:
       - .env
     environment:
-      # 强制使用 3100 作为容器内端口，与 EXPOSE 一致；
-      # 宿主机端口由 ports 映射决定（从 .env 或 SERVER_PORT 读取）。
+      # 容器内端口固定 3100；宿主机端口由 SERVER_PORT 映射。
       - PORT=3100
+      # Linux 镜像自带 venv，不要填 Windows 的 python.exe
+      - MINDSPIDER_PYTHON=/opt/venv/bin/python
+      # 容器内没有本机 Chrome/Edge，关闭 CDP，改用 Playwright Chromium
+      - MINDSPIDER_CDP=false
+    shm_size: "2gb"
     restart: unless-stopped
-    # 如需健康检查，取消下面注释：
-    # healthcheck:
-    #   test: ["CMD", "node", "-e", "require('http').get('http://localhost:3100/api/health',r=>{process.exit(r.statusCode===200?0:1)})"]
-    #   interval: 30s
-    #   timeout: 5s
-    #   retries: 3
-    #   start_period: 10s
+    volumes:
+      # 账号与分析记录
+      - agentmind-data:/app/server/data
+      # 平台登录态（扫码成功后务必保留）
+      - crawler-browser-data:/app/mindspider/DeepSentimentCrawling/MediaCrawler/browser_data
+      - crawler-user-data:/app/mindspider/DeepSentimentCrawling/MediaCrawler/user_data
+
+volumes:
+  agentmind-data:
+  crawler-browser-data:
+  crawler-user-data:

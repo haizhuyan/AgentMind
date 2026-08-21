@@ -1,37 +1,44 @@
-# ---- Stage 1: 构建前端 ----
-FROM node:22-alpine AS builder
+# 应用镜像（日常 docker-compose build --no-cache 只重建这一份）
+# -------------------------------------------------------
+# 已写死在基础镜像 agentmind-crawler-base:latest，禁止再写进本文件：
+#   Python venv、pip 包、Playwright Chromium、MediaCrawler 源码、xvfb/noVNC
+#
+# 第一次上服务器（或底座要升级）先构建底座：
+#   docker build -f Dockerfile.base -t agentmind-crawler-base:latest .
+#
+# 不在镜像里、重建也不会丢（千万不要 docker-compose down -v）：
+#   /app/server/data
+#   MediaCrawler/browser_data
+#   MediaCrawler/user_data
 
+FROM agentmind-crawler-base:latest AS runtime
+
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
-
-# 先装依赖（利用 Docker 层缓存）
 COPY package.json package-lock.json* ./
 RUN npm ci
-
-# 复制源码并构建
 COPY index.html vite.config.js ./
 COPY src/ ./src/
 COPY public/ ./public/
 RUN npm run build
 
-# ---- Stage 2: 生产运行 ----
-FROM node:22-alpine
-
+FROM runtime
 WORKDIR /app
 
-# 仅安装后端运行时所需的依赖（express / cors / dotenv）
 COPY package.json package-lock.json* ./
-RUN npm ci --production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
-# 复制后端源码
 COPY server/ ./server/
+COPY mindspider/ ./mindspider/
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
-# 从构建阶段复制前端产物
 COPY --from=builder /app/dist ./dist
 
-# 运行时端口（可通过 PORT 或 SERVER_PORT 环境变量覆盖）
-EXPOSE 3100
+ENV PORT=3100 \
+    MINDSPIDER_PYTHON=/opt/venv/bin/python \
+    MINDSPIDER_CDP=false \
+    PYTHONUNBUFFERED=1
 
-# HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-#   CMD node -e "require('http').get('http://localhost:3100/api/health',r=>{process.exit(r.statusCode===200?0:1)})"
-
-CMD ["node", "server/index.js"]
+EXPOSE 3100 6080
+ENTRYPOINT ["/entrypoint.sh"]

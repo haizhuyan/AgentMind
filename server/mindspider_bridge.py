@@ -168,14 +168,21 @@ def _force_json_save_option():
             elif line.startswith("CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = "):
                 replaced = "CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 20"
             elif line.startswith("HEADLESS = "):
-                replaced = "HEADLESS = True"
+                headless = os.environ.get("MINDSPIDER_HEADLESS", "true").strip().lower()
+                replaced = f"HEADLESS = {headless in ('true', '1', 'yes')}"
+            elif line.startswith("ENABLE_CDP_MODE = "):
+                # Linux Docker 无宿主机 Chrome/Edge，默认走 Playwright Chromium。
+                # 本机有界面部署可设 MINDSPIDER_CDP=true。
+                cdp = os.environ.get("MINDSPIDER_CDP", "false").strip().lower()
+                replaced = f"ENABLE_CDP_MODE = {cdp in ('true', '1', 'yes')}"
             elif line.startswith("CDP_CONNECT_EXISTING = "):
-                replaced = "CDP_CONNECT_EXISTING = False  # 桥接模式：自动启动本机 Chrome/Edge，无需手动开调试端口"
+                replaced = "CDP_CONNECT_EXISTING = False  # 桥接模式：自动启动浏览器，无需手动开调试端口"
             elif line.startswith("CDP_HEADLESS = "):
-                # 生产「无感」：默认无头执行（不弹浏览器窗口）。
-                # 首次登录需设为 False 扫码：MINDSPIDER_HEADLESS=false 运行一次。
+                # 生产「无感」：默认无头执行。首次登录设 MINDSPIDER_HEADLESS=false。
                 headless = os.environ.get("MINDSPIDER_HEADLESS", "true").strip().lower()
                 replaced = f"CDP_HEADLESS = {headless in ('true', '1', 'yes')}  # 桥接模式：后台无感爬取"
+            elif line.startswith("USER_DATA_DIR = "):
+                replaced = 'USER_DATA_DIR = "user_data/%s_user_data_dir"'
             if replaced is not None:
                 new_lines.append(replaced)
                 if line.rstrip().endswith("("):
@@ -193,11 +200,17 @@ def _force_json_save_option():
     _orig_run = _sp.run
 
     def _patched_run(cmd, **kwargs):
-        if isinstance(cmd, (list, tuple)) and "--save_data_option" in list(cmd):
+        if isinstance(cmd, (list, tuple)):
             cmd = list(cmd)
-            idx = cmd.index("--save_data_option")
-            if idx + 1 < len(cmd):
-                cmd[idx + 1] = "json"
+            if "--save_data_option" in cmd:
+                idx = cmd.index("--save_data_option")
+                if idx + 1 < len(cmd):
+                    cmd[idx + 1] = "json"
+            if "--headless" in cmd:
+                idx = cmd.index("--headless")
+                if idx + 1 < len(cmd):
+                    headless = os.environ.get("MINDSPIDER_HEADLESS", "true").strip().lower()
+                    cmd[idx + 1] = "true" if headless in ("true", "1", "yes") else "false"
         return _orig_run(cmd, **kwargs)
 
     _sp.run = _patched_run

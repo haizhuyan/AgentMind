@@ -3,11 +3,16 @@ dist
 *.log
 .git
 .gitignore
+.env
 .env.example
 *.md
 Dockerfile
 docker-compose.yml
+docker-compose.qr.yml
 .dockerignore
 .vscode
 .idea
 .reasonix
+mindspider/**/__pycache__
+mindspider/DeepSentimentCrawling/MediaCrawler
+server/data

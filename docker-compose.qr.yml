@@ -1,0 +1,13 @@
+# 首次扫码专用：虚拟桌面 + noVNC
+# 用法：
+#   docker compose -f docker-compose.yml -f docker-compose.qr.yml up -d --build
+# 浏览器打开 http://服务器IP:6080 查看弹出的登录窗口并扫码。
+# 成功后改回：
+#   docker compose up -d
+# （不要再带 docker-compose.qr.yml）
+services:
+  agentmind:
+    environment:
+      - MINDSPIDER_HEADLESS=false
+    ports:
+      - "6080:6080"

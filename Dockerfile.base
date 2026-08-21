@@ -1,0 +1,48 @@
+# 爬虫运行时底座：Python / Chromium / MediaCrawler / noVNC
+# -------------------------------------------------------
+# 只在以下情况重建（很慢，约十几分钟）：
+#   - 换 Playwright / Python 依赖
+#   - 换 MediaCrawler 版本
+#   - 换系统包（xvfb、字体等）
+#
+# 构建（服务器上执行一次，或上述情况才再跑）：
+#   docker build -f Dockerfile.base -t agentmind-crawler-base:latest .
+#
+# 日常发布不要重建本文件。继续用：
+#   docker-compose down
+#   docker-compose build --no-cache
+#   docker-compose up -d
+# --no-cache 只打应用镜像，会复用本底座，不会重装 Chromium。
+
+FROM node:22-bookworm-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-venv python3-dev \
+    git ca-certificates \
+    libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
+    xvfb x11vnc novnc websockify \
+    fonts-liberation fonts-wqy-zenhei \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY mindspider/requirements-bridge.txt /tmp/requirements-bridge.txt
+
+ARG MEDIACRAWLER_REPO=https://github.com/NanmiCoder/MediaCrawler.git
+RUN mkdir -p mindspider/DeepSentimentCrawling \
+    && git clone --depth 1 "${MEDIACRAWLER_REPO}" mindspider/DeepSentimentCrawling/MediaCrawler \
+    && rm -rf mindspider/DeepSentimentCrawling/MediaCrawler/.git
+
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    VIRTUAL_ENV=/opt/venv
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r /tmp/requirements-bridge.txt \
+    && pip install --no-cache-dir -r mindspider/DeepSentimentCrawling/MediaCrawler/requirements.txt \
+    && python -m playwright install --with-deps chromium
+
+# 写死容器内解释器，与 Windows 宿主机无关
+ENV MINDSPIDER_PYTHON=/opt/venv/bin/python \
+    MINDSPIDER_CDP=false \
+    PYTHONUNBUFFERED=1

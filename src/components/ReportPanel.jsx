@@ -1,16 +1,16 @@
 import { useState } from 'react'
-import { buildHtmlReport } from '../utils/htmlReport.js'
+import { downloadHtmlReport } from '../utils/htmlReport.js'
 import { downloadReportPdf } from '../utils/pdfExport.js'
+import { downloadMarkdownReport } from '../utils/mdExport.js'
 
 /**
  * ReportPanel —— 舆情报告展示区
- * 渲染 Markdown 报告（轻量解析），支持复制与导出交互式 HTML / PDF。
+ * 渲染 Markdown 报告（轻量解析），支持复制与导出 HTML / PDF / Markdown。
  * @param {string} props.report   报告 Agent 生成的 Markdown 文本
  * @param {Object} props.debate   辩论/交叉验证结果（展示溯源）
  * @param {Array}  props.sources  采集来源列表
- * @param {Object} props.result   完整分析结果（用于导出 HTML）
- * @param {boolean} [props.embedded] 嵌入模式：不渲染卡片外壳/标题/导出按钮，
- *        由外层容器统一提供标题与操作（避免重复一套导出入口）
+ * @param {Object} props.result   完整分析结果（用于导出）
+ * @param {boolean} [props.embedded] 嵌入模式：不渲染卡片外壳/标题/导出按钮
  */
 export default function ReportPanel({ report, debate, sources = [], result, embedded = false }) {
   const [copied, setCopied] = useState(false)
@@ -27,22 +27,17 @@ export default function ReportPanel({ report, debate, sources = [], result, embe
   }
 
   function exportHtml() {
-    const html = buildHtmlReport(result)
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    const kw = (result?.keyword || 'report').replace(/[\\/:*?"<>|]/g, '_')
-    a.href = url
-    a.download = `舆情报告_${kw}_${Date.now()}.html`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    if (!result) return
+    downloadHtmlReport(result)
   }
 
-  // 导出 PDF：前端直接生成电子版 PDF 文件并下载（非调用打印机）
+  function exportMd() {
+    if (!result) return
+    downloadMarkdownReport(result)
+  }
+
   async function exportPdf() {
-    if (pdfLoading) return
+    if (!result || pdfLoading) return
     setPdfLoading(true)
     try {
       await downloadReportPdf(result)
@@ -82,7 +77,6 @@ export default function ReportPanel({ report, debate, sources = [], result, embe
     </>
   )
 
-  // 嵌入模式：由外层「最终分析报告」卡片统一提供标题与导出操作
   if (embedded) {
     return <div className="report-panel-embedded">{body}</div>
   }
@@ -93,11 +87,14 @@ export default function ReportPanel({ report, debate, sources = [], result, embe
         <span className="title-bar" />
         舆情分析报告
         <span className="report-actions">
-          <button className="copy-btn" onClick={exportPdf} disabled={pdfLoading}>
+          <button className="copy-btn" onClick={exportHtml} disabled={!result}>
+            导出 HTML
+          </button>
+          <button className="copy-btn" onClick={exportPdf} disabled={!result || pdfLoading}>
             {pdfLoading ? '生成中…' : '导出 PDF'}
           </button>
-          <button className="copy-btn" onClick={exportHtml}>
-            导出 HTML
+          <button className="copy-btn" onClick={exportMd} disabled={!result}>
+            导出 MD
           </button>
           <button className="copy-btn" onClick={copy}>
             {copied ? '已复制 ✓' : '复制报告'}
@@ -109,10 +106,7 @@ export default function ReportPanel({ report, debate, sources = [], result, embe
   )
 }
 
-/**
- * 极简 Markdown 渲染：支持标题、加粗、列表。
- * 用于演示报告展示，避免引入额外依赖。
- */
+/** 极简 Markdown 渲染：标题、加粗、列表 */
 function renderMarkdown(md = '') {
   const lines = md.split('\n')
   const blocks = []
@@ -166,7 +160,6 @@ function renderMarkdown(md = '') {
   return blocks
 }
 
-// 行内加粗高亮 + 引用编号 [n] 上标
 function inline(text) {
   const parts = text.split(/(\*\*[^*]+\*\*|\[\d+\])/g)
   return parts.map((p, i) => {

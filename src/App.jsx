@@ -3,7 +3,7 @@ import LoginModal from './components/LoginModal.jsx'
 import Landing from './landing/Landing.jsx'
 import Workbench from './workbench/Workbench.jsx'
 import { runAgentFlow } from './services/agentOrchestrator.js'
-import { fetchModels, setLLMAbortSignal, isAbortError, createAbortError, sleep } from './services/llmService.js'
+import { fetchModels, setLLMAbortSignal, isAbortError, createAbortError, sleep, callLLM } from './services/llmService.js'
 import { useDemoMode } from './services/demoMode.js'
 import { DEFAULT_TEMPLATE_ID } from './report/templates.js'
 import { MINDSPIDER_CONFIG } from './config.js'
@@ -63,6 +63,9 @@ export default function App() {
   const [error, setError] = useState('')
   const [streamReport, setStreamReport] = useState('')
   const [thinking, setThinking] = useState('')
+  /** 报告完成后的追问对话（同会话，不新开流水线） */
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatLoading, setChatLoading] = useState(false)
   const [models, setModels] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
   const [primaryId, setPrimaryId] = useState('')
@@ -97,6 +100,14 @@ export default function App() {
   useEffect(() => {
     setHistory(loadHistory())
   }, [])
+
+  // 离开工作台（回首页）时暂停进行中的分析
+  useEffect(() => {
+    if (route !== 'app' && abortRef.current) {
+      pauseCurrentRun({ persist: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route])
 
   // 通知横幅自动消失
   useEffect(() => {
@@ -154,16 +165,53 @@ export default function App() {
     setError('')
     setStreamReport('')
     setThinking('')
+    setChatMessages([])
+    setChatLoading(false)
   }
 
-  // 新建对话：清空当前会话（默认新用户进入即处于此状态）
-  function handleNewChat() {
-    abortRef.current?.abort()
-    abortRef.current = null
-    setLLMAbortSignal(null)
+  /**
+   * 暂停当前分析：中断请求、结束 loading，并把进行中记录收尾为 failed（可断点续跑）。
+   * 切换会话 / 回首页 / 新建对话时调用。仅在确有运行中的任务时写回 failed。
+   */
+  function pauseCurrentRun({ persist = true } = {}) {
+    const recordId = activeRecordId
+    const wasRunning = Boolean(abortRef.current)
+    const snapshot = {
+      state: { ...stepStateRef.current.state },
+      pipeline: stepStateRef.current.pipeline ? { ...stepStateRef.current.pipeline } : {}
+    }
     runIdRef.current += 1
-    reset()
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+    setLLMAbortSignal(null)
     setLoading(false)
+
+    if (!wasRunning) return
+
+    Object.keys(snapshot.state).forEach((k) => {
+      if (snapshot.state[k]?.status === 'running') {
+        snapshot.state[k] = { ...snapshot.state[k], status: 'failed' }
+      }
+    })
+    stepStateRef.current.state = snapshot.state
+
+    if (persist && user && recordId) {
+      apiUpdateRecordStep(recordId, {
+        stepState: snapshot.state,
+        pipeline: snapshot.pipeline
+      }).catch(() => {})
+      apiFinishRecord(recordId, 'failed')
+        .then(async () => setRecords(await apiListRecords()))
+        .catch(() => {})
+    }
+  }
+
+  // 新建对话：先暂停当前会话，再清空工作区
+  function handleNewChat() {
+    pauseCurrentRun({ persist: true })
+    reset()
     setViewRecord(null)
     setActiveRecordId(null)
     setActiveKeyword('')
@@ -172,7 +220,19 @@ export default function App() {
   }
 
   function handleStop() {
-    abortRef.current?.abort()
+    // 停止 = 暂停当前会话（保留步骤产物，可手动继续）
+    if (!loading && !abortRef.current) return
+    pauseCurrentRun({ persist: true })
+    setStatuses((prev) => {
+      const next = { ...prev }
+      Object.keys(next).forEach((k) => {
+        if (next[k]?.status === 'running') {
+          next[k] = { ...next[k], status: 'failed' }
+        }
+      })
+      return next
+    })
+    setError('分析已暂停。可点击「继续分析」从断点重试。')
   }
 
   async function handleAnalyze({ keyword, rawText, resume }) {
@@ -182,20 +242,28 @@ export default function App() {
     setLLMAbortSignal(ac.signal)
     const runId = ++runIdRef.current
 
-    reset()
+    // 新开分析清空结果；续跑则先恢复步骤态
+    setResult(null)
+    setStreamReport('')
+    setThinking('')
+    setError('')
     setViewRecord(null)
     setLoading(true)
-    setError('')
     setActiveKeyword(keyword || '')
+    if (!resume) setChatMessages([])
     if (keyword) setHistory(saveHistory(keyword))
 
-    // 断点续跑：恢复已保存的步骤态，让聊天流立即显示已完成步骤
     if (resume?.stepDetails) {
-      const restored = {}
+      const forUi = {}
       Object.entries(resume.stepDetails).forEach(([stepId, s]) => {
-        if (s?.status) restored[stepId] = { status: s.status, detail: s.detail }
+        if (!s?.status) return
+        // 已完成步骤保持 done；失败/中断步骤显示为 pending，由流水线重跑
+        if (s.status === 'done') forUi[stepId] = { status: 'done', detail: s.detail }
+        else forUi[stepId] = { status: 'pending', detail: s.detail }
       })
-      setStatuses(restored)
+      setStatuses(forUi)
+    } else {
+      setStatuses({})
     }
 
     // 创建/沿用对话记录（登录用户）
@@ -214,6 +282,12 @@ export default function App() {
     }
     setActiveRecordId(recordId)
     if (!resume) stepStateRef.current = { state: {}, pipeline: {} }
+    else {
+      stepStateRef.current = {
+        state: { ...(resume.stepDetails || {}) },
+        pipeline: { ...(resume.pipeline || {}) }
+      }
+    }
 
     // 抽取公共：执行流水线（含步骤增量持久化）
     const runPipeline = async (pipelineResume) => {
@@ -236,7 +310,6 @@ export default function App() {
             ...prev,
             [stepId]: { status, detail: detail ?? prev[stepId]?.detail }
           }))
-          // 增量持久化：步骤态 + 流水线快照（断点续跑的数据基础）
           stepStateRef.current.state[stepId] = { status, detail }
           if (pipeline) stepStateRef.current.pipeline = pipeline
           if (user && recordId) {
@@ -252,8 +325,8 @@ export default function App() {
         }
       })
       setResult(data)
-      // 分析最终完成：清空输入框
       setSeedKeyword({ value: '' })
+      setError('')
       if (user && recordId) {
         apiFinishRecord(recordId, 'completed', data)
           .then(async () => setRecords(await apiListRecords()))
@@ -262,94 +335,109 @@ export default function App() {
     }
 
     try {
-      // ---- MindSpider 爬虫：异步任务流（提交任务 → 后台队列 → 完成后通知并接续流水线）----
-      // 仅登录用户走任务队列（演示模式无后端）；粘贴文本/续跑已有数据时直接跑流水线。
       const isCrawlMode = user && collectSource === 'mindspider' && !rawText
       if (isCrawlMode) {
-        // 待恢复的爬虫任务（断点续跑：collect 步骤记录过 jobId 且任务未完成）
         const savedCollect = resume?.stepDetails?.collect
         let jobId = savedCollect?.detail?.jobId
         let job = null
 
-        if (jobId) {
-          job = await apiGetCrawlJob(jobId).catch(() => null)
-          if (!job || job.status === 'failed') {
-            // 原任务失效：重新提交
-            jobId = null
-            job = null
-          }
-        }
-        if (!jobId) {
-          const created = await apiCreateCrawlJob({
-            keyword,
-            platform: collectPlatform || MINDSPIDER_CONFIG.platform,
-            maxNotes: MINDSPIDER_CONFIG.maxNotes
+        // 采集已成功则跳过爬虫，直接续跑后续步骤
+        const collectDone =
+          savedCollect?.status === 'done' &&
+          Array.isArray(resume?.pipeline?.raw) &&
+          resume.pipeline.raw.length > 0
+
+        if (collectDone) {
+          await runPipeline({
+            pipeline: resume.pipeline || {},
+            stepDetails: resume.stepDetails || {}
           })
-          jobId = created?.id
-          if (!jobId) throw new Error('爬虫任务提交失败，请检查后端 MindSpider 配置。')
-          job = { status: 'queued', progress: '排队中' }
-        }
-
-        // collect 步骤进入「后台执行」状态并持久化（断点续跑可恢复）
-        const persistCollect = (status, detail) => {
-          setStatuses((prev) => ({ ...prev, collect: { status, detail } }))
-          stepStateRef.current.state.collect = { status, detail }
-          if (user && recordId) {
-            apiUpdateRecordStep(recordId, {
-              stepState: stepStateRef.current.state,
-              pipeline: stepStateRef.current.pipeline
-            }).catch(() => {})
+        } else {
+          if (jobId) {
+            job = await apiGetCrawlJob(jobId).catch(() => null)
+            if (!job || job.status === 'failed') {
+              jobId = null
+              job = null
+            }
           }
-        }
-        persistCollect('running', {
-          _running: true,
-          mode: '爬虫任务后台执行中（无头模式）',
-          count: 0,
-          jobId
-        })
+          if (!jobId) {
+            const created = await apiCreateCrawlJob({
+              keyword,
+              platform: collectPlatform || MINDSPIDER_CONFIG.platform,
+              maxNotes: MINDSPIDER_CONFIG.maxNotes
+            })
+            jobId = created?.id
+            if (!jobId) throw new Error('爬虫任务提交失败，请检查后端 MindSpider 配置。')
+            job = { status: 'queued', progress: '排队中' }
+          }
 
-        // 轮询任务状态
-        while (job && (job.status === 'queued' || job.status === 'running')) {
-          if (ac.signal.aborted) throw createAbortError()
-          await sleep(3000, ac.signal)
-          job = await apiGetCrawlJob(jobId).catch(() => null)
-          if (ac.signal.aborted) throw createAbortError()
-          if (!job) throw new Error('爬虫任务丢失，请重试。')
+          const persistCollect = (status, detail) => {
+            setStatuses((prev) => ({ ...prev, collect: { status, detail } }))
+            stepStateRef.current.state.collect = { status, detail }
+            if (user && recordId) {
+              apiUpdateRecordStep(recordId, {
+                stepState: stepStateRef.current.state,
+                pipeline: stepStateRef.current.pipeline
+              }).catch(() => {})
+            }
+          }
           persistCollect('running', {
             _running: true,
-            mode: `爬虫任务后台执行中（${job.progress || job.status}）`,
+            mode: '爬虫任务后台执行中（无头模式）',
             count: 0,
             jobId
           })
-        }
 
-        if (job.status !== 'completed' || !job.result?.texts?.length) {
-          throw new Error(job.error || '爬虫任务失败：未获取到内容，可换关键词重试。')
-        }
-
-        // 完成后通知 + 保存采集产物 + 接续流水线（跳过采集步骤）
-        setNotice(`✅ 爬虫任务完成：${job.result.texts.length} 条样本，流水线继续执行`)
-        persistCollect('done', {
-          count: job.result.texts.length,
-          mode: `MindSpider 爬虫（${collectPlatform || 'weibo'}）`,
-          sources: (job.result.sources || []).slice(0, 8),
-          samples: job.result.texts.slice(0, 8)
-        })
-        await runPipeline({
-          pipeline: { raw: job.result.texts, sources: job.result.sources || [] },
-          stepDetails: {
-            collect: {
-              status: 'done',
-              detail: stepStateRef.current.state.collect.detail
-            }
+          while (job && (job.status === 'queued' || job.status === 'running')) {
+            if (ac.signal.aborted) throw createAbortError()
+            await sleep(3000, ac.signal)
+            job = await apiGetCrawlJob(jobId).catch(() => null)
+            if (ac.signal.aborted) throw createAbortError()
+            if (!job) throw new Error('爬虫任务丢失，请重试。')
+            persistCollect('running', {
+              _running: true,
+              mode: `爬虫任务后台执行中（${job.progress || job.status}）`,
+              count: 0,
+              jobId
+            })
           }
-        })
+
+          if (job.status !== 'completed' || !job.result?.texts?.length) {
+            throw new Error(job.error || '爬虫任务失败：未获取到内容，可换关键词重试。')
+          }
+
+          setNotice(`✅ 爬虫任务完成：${job.result.texts.length} 条样本，流水线继续执行`)
+          persistCollect('done', {
+            count: job.result.texts.length,
+            mode: `MindSpider 爬虫（${collectPlatform || 'weibo'}）`,
+            sources: (job.result.sources || []).slice(0, 8),
+            samples: job.result.texts.slice(0, 8)
+          })
+          await runPipeline({
+            pipeline: { raw: job.result.texts, sources: job.result.sources || [] },
+            stepDetails: {
+              ...(resume?.stepDetails || {}),
+              collect: {
+                status: 'done',
+                detail: stepStateRef.current.state.collect.detail
+              }
+            }
+          })
+        }
       } else {
-        await runPipeline(
-          resume
-            ? { pipeline: resume.pipeline || {}, stepDetails: resume.stepDetails || {} }
-            : undefined
-        )
+        // 续跑：只把 done 的步骤交给 orchestrator；failed 不作为 done
+        let pipelineResume
+        if (resume) {
+          const stepDetails = {}
+          Object.entries(resume.stepDetails || {}).forEach(([id, s]) => {
+            if (s?.status === 'done') stepDetails[id] = s
+          })
+          pipelineResume = {
+            pipeline: resume.pipeline || {},
+            stepDetails
+          }
+        }
+        await runPipeline(pipelineResume)
       }
     } catch (err) {
       if (runId !== runIdRef.current) return
@@ -362,13 +450,25 @@ export default function App() {
         })
         return next
       })
+      Object.keys(stepStateRef.current.state).forEach((k) => {
+        if (stepStateRef.current.state[k]?.status === 'running') {
+          stepStateRef.current.state[k] = {
+            ...stepStateRef.current.state[k],
+            status: 'failed'
+          }
+        }
+      })
+      const paused = isAbortError(err)
       setError(
-        isAbortError(err)
-          ? '分析已中断。可点历史记录继续，或重新发起分析。'
-          : err.message || '分析过程发生异常'
+        paused
+          ? '分析已暂停。可点击「继续分析」从断点重试。'
+          : `${err.message || '分析过程发生异常'}。可点击「继续分析」重试。`
       )
-      // 失败收尾：保留流水线快照，供「继续」断点续跑
       if (user && recordId) {
+        apiUpdateRecordStep(recordId, {
+          stepState: stepStateRef.current.state,
+          pipeline: stepStateRef.current.pipeline
+        }).catch(() => {})
         apiFinishRecord(recordId, 'failed')
           .then(async () => setRecords(await apiListRecords()))
           .catch(() => {})
@@ -384,9 +484,62 @@ export default function App() {
 
   function handlePickKeyword(keyword) {
     const kw = String(keyword || '').trim()
-    if (!kw || loading) return
+    if (!kw || loading || chatLoading) return
     setSeedKeyword({ value: kw })
     handleAnalyze({ keyword: kw })
+  }
+
+  /**
+   * 报告完成后的自然语言追问：基于当前报告继续讨论，不新开流水线。
+   */
+  async function handleChat({ message }) {
+    const msg = String(message || '').trim()
+    const reportData = result || viewRecord?.result
+    if (!msg || !reportData || loading || chatLoading) return
+
+    const userMsg = { id: `u-${Date.now()}`, role: 'user', content: msg }
+    setChatMessages((prev) => [...prev, userMsg])
+    setChatLoading(true)
+
+    const reportText = String(reportData.report || '').slice(0, 8000)
+    const kw = reportData.keyword || activeKeyword || ''
+    const historyLines = [...chatMessages, userMsg]
+      .slice(-8)
+      .map((m) => `${m.role === 'user' ? '用户' : '助手'}：${m.content}`)
+      .join('\n')
+
+    try {
+      const primary = models.find((m) => m.id === primaryId) || models[0]
+      const reply = await callLLM({
+        system: `你是 AgentMind 舆情分析助手。用户已完成关于「${kw}」的舆情分析报告，请基于报告内容回答追问，不要重新采集或编造报告外的权威数据。回答简洁、可执行，必要处引用报告观点。若问题与报告无关，礼貌说明并引导回到报告议题。`,
+        user: `【报告正文】\n${reportText || '（报告正文为空，请根据已知分析结论作答）'}\n\n【近期对话】\n${historyLines || '（无）'}\n\n【本轮用户问题】\n${msg}`,
+        model: primary?.id,
+        json: false,
+        temperature: 0.5
+      })
+      setChatMessages((prev) => [
+        ...prev,
+        { id: `a-${Date.now()}`, role: 'assistant', content: String(reply || '').trim() || '（未生成有效回复）' }
+      ])
+    } catch (err) {
+      if (isAbortError(err)) {
+        setChatMessages((prev) => [
+          ...prev,
+          { id: `a-${Date.now()}`, role: 'assistant', content: '追问已取消。' }
+        ])
+      } else {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: `a-${Date.now()}`,
+            role: 'assistant',
+            content: `追问失败：${err?.message || '未知错误'}。可稍后重试。`
+          }
+        ])
+      }
+    } finally {
+      setChatLoading(false)
+    }
   }
 
   function handleRemoveHistory(keyword) {
@@ -472,8 +625,11 @@ export default function App() {
 
   // 工作台演示开关：关闭且未登录 → 回首页；已登录 → 留在工作台
   function handleToggleDemo(next) {
+    pauseCurrentRun({ persist: true })
     setDemoMode(next)
     reset()
+    setViewRecord(null)
+    setActiveRecordId(null)
     if (!next && !user) {
       window.location.hash = ''
     }
@@ -481,6 +637,7 @@ export default function App() {
 
   // 工作台登录态点击：已登录 → 退出登录回首页；演示 → 回首页弹登录框
   function handleLoginStatusClick() {
+    pauseCurrentRun({ persist: true })
     if (user) {
       handleLogout()
     } else {
@@ -490,17 +647,20 @@ export default function App() {
     }
   }
 
-  // 侧边栏 AgentMind logo 点击 → 返回首页
+  // 侧边栏 AgentMind logo 点击 → 暂停后返回首页
   function handleHome() {
+    pauseCurrentRun({ persist: true })
     window.location.hash = ''
   }
 
   function handleLogout() {
+    pauseCurrentRun({ persist: false })
     setToken('')
     setUser(null)
     setDemoMode(false)
     setRecords([])
     setViewRecord(null)
+    setActiveRecordId(null)
     setLoginModalOpen(false)
     setPendingPrompt('')
     setSeedKeyword(null)
@@ -508,28 +668,102 @@ export default function App() {
     window.location.hash = ''
   }
 
-  // 打开历史记录：已完成 → 全量回放（含步骤中间产物，不重跑）；未完成/失败 → 断点续跑
+  /** 将服务端 step_state 转为界面 statuses */
+  function statusesFromStepState(stepState = {}) {
+    const restored = {}
+    Object.entries(stepState).forEach(([stepId, s]) => {
+      if (s?.status) restored[stepId] = { status: s.status, detail: s.detail }
+    })
+    return restored
+  }
+
+  // 打开历史记录：已完成 → 回看；未完成/失败 → 仅展示快照，不自动重跑（需手动「继续分析」）
   async function handleOpenRecord(id) {
-    if (loading) return
+    pauseCurrentRun({ persist: true })
     try {
       const record = await apiGetRecord(id)
       if (!record) return
+
+      setStreamReport('')
+      setThinking('')
+      setResult(null)
+      setChatMessages([])
+      setChatLoading(false)
+      setActiveRecordId(record.id)
+      setActiveKeyword(record.keyword || '')
+      setCollectSource(record.source === 'mindspider' ? 'mindspider' : 'search')
+      if (record.platform) setCollectPlatform(record.platform)
+
       if (record.status === 'completed' && record.result) {
-        reset()
+        setError('')
+        setStatuses(statusesFromStepState(record.step_state))
+        stepStateRef.current = {
+          state: record.step_state || {},
+          pipeline: record.pipeline || {}
+        }
         setViewRecord(record)
-      } else {
-        await handleResumeRecord(record)
+        return
+      }
+
+      // 暂停 / 失败 / 未完成：展示流水线快照，等待用户手动继续
+      const stepState = { ...(record.step_state || {}) }
+      Object.keys(stepState).forEach((k) => {
+        if (stepState[k]?.status === 'running') {
+          stepState[k] = { ...stepState[k], status: 'failed' }
+        }
+      })
+      const snapshot = {
+        ...record,
+        status: record.status === 'completed' ? 'completed' : 'failed',
+        step_state: stepState
+      }
+      setViewRecord(snapshot)
+      setStatuses(statusesFromStepState(stepState))
+      stepStateRef.current = {
+        state: stepState,
+        pipeline: { ...(record.pipeline || {}) }
+      }
+      setError('该分析已暂停或未完成。可点击「继续分析」从断点重试。')
+      // 把仍标 running 的旧记录收尾为 failed，避免下次误判
+      if (user && record.id && record.status === 'running') {
+        apiUpdateRecordStep(record.id, {
+          stepState,
+          pipeline: record.pipeline || {}
+        }).catch(() => {})
+        apiFinishRecord(record.id, 'failed')
+          .then(async () => setRecords(await apiListRecords()))
+          .catch(() => {})
       }
     } catch (err) {
       setError(err.message || '记录加载失败')
     }
   }
 
-  // 未完成（running/failed）记录的断点续跑：恢复步骤态与流水线快照，从断点继续
+  // 手动继续：从当前失败/暂停会话断点续跑
+  async function handleRetry() {
+    if (loading) return
+    const record = viewRecord && viewRecord.status !== 'completed' ? viewRecord : null
+    if (record) {
+      await handleResumeRecord(record)
+      return
+    }
+    const keyword = activeKeyword
+    if (!keyword) return
+    const stepDetails = { ...stepStateRef.current.state }
+    const pipeline = { ...(stepStateRef.current.pipeline || {}) }
+    await handleAnalyze({
+      keyword,
+      resume: {
+        recordId: activeRecordId || undefined,
+        pipeline,
+        stepDetails
+      }
+    })
+  }
+
+  // 未完成记录的断点续跑（仅由「继续分析」触发）
   async function handleResumeRecord(record) {
     if (loading) return
-    setActiveRecordId(record.id)
-    setActiveKeyword(record.keyword || '')
     setCollectSource(record.source === 'mindspider' ? 'mindspider' : 'search')
     if (record.platform) setCollectPlatform(record.platform)
     await handleAnalyze({
@@ -544,8 +778,13 @@ export default function App() {
 
   async function handleDeleteRecord(id) {
     try {
+      if (activeRecordId === id) pauseCurrentRun({ persist: false })
       await apiDeleteRecord(id)
       if (viewRecord?.id === id) setViewRecord(null)
+      if (activeRecordId === id) {
+        setActiveRecordId(null)
+        reset()
+      }
       setRecords(await apiListRecords())
     } catch (err) {
       setError(err.message || '删除失败')
@@ -586,6 +825,8 @@ export default function App() {
       viewRecord={viewRecord}
       streamReport={streamReport}
       thinking={thinking}
+      chatMessages={chatMessages}
+      chatLoading={chatLoading}
       error={error}
       activeKeyword={activeKeyword}
       records={records}
@@ -609,7 +850,9 @@ export default function App() {
       onToggleDemo={handleToggleDemo}
       onLoginStatusClick={handleLoginStatusClick}
       onAnalyze={handleAnalyze}
+      onChat={handleChat}
       onStop={handleStop}
+      onRetry={handleRetry}
       onHome={handleHome}
       onLogout={handleLogout}
       notice={notice}

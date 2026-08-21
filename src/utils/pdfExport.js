@@ -1,25 +1,25 @@
 /**
  * pdfExport.js —— 前端生成可下载的 PDF 文件
  * ---------------------------------------------------
- * 复用报告 IR，在页面外构造一份 A4 浅色版面，用 ECharts 绘制图表，
+ * 复用报告 IR，在页面内构造一份 A4 浅色版面，用 ECharts 绘制图表，
  * 再用 html2pdf.js（html2canvas + jsPDF）截取为分页 PDF 并触发下载。
- * 与"调用打印机"不同，这里直接产出电子版 PDF 文件保存到本地。
+ *
+ * 注意：不可用 left:-9999 / position:fixed 把节点甩出视口，
+ * html2canvas 会截成空白页（已知问题）。
  */
 
 import * as echarts from 'echarts'
 import html2pdf from 'html2pdf.js'
 import { markdownToIR, irToContentHtml, irToTocHtml, escapeHtml } from '../report/ir.js'
 
-/** 从 result 取得 IR：优先用已生成的 result.ir，否则由 Markdown 兜底解析。 */
 function resolveIR(result) {
   const { keyword, report, templateId, ir } = result || {}
   if (ir && Array.isArray(ir.sections) && ir.sections.length) return ir
   return markdownToIR(report || '', { keyword, templateId })
 }
 
-/** 等待下一帧，确保 DOM 与图表完成渲染。 */
-function nextFrame() {
-  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
@@ -34,7 +34,7 @@ export async function downloadReportPdf(result) {
   const keywords = analyze?.keywords || []
   const generatedAt = new Date().toLocaleString('zh-CN')
   const templateName = ir.meta?.templateName || '舆情分析报告'
-  const accent = ir.meta?.accent || '#1d1d1f'
+  const accent = ir.meta?.accent || '#0EA5E9'
 
   const sourcesHtml = sources.length
     ? sources
@@ -49,78 +49,100 @@ export async function downloadReportPdf(result) {
 
   const riskBadge = trend?.riskLevel
     ? `<span class="badge" style="background:${trend.riskLevel.color}">风险 ${escapeHtml(
-        trend.riskLevel.level
+        String(trend.riskLevel.level)
       )}（${trend.riskLevel.score}）</span>`
     : ''
 
-  // 屏幕外容器：A4 内容宽度约 760px（794px 减去左右边距）
-  const container = document.createElement('div')
-  container.style.cssText =
-    'position:fixed;left:-10000px;top:0;width:760px;background:#fff;color:#1d1d1f;' +
-    'font-family:"Microsoft YaHei",system-ui,sans-serif;line-height:1.75;padding:8px;'
-  container.innerHTML = `
+  // 必须在视口内渲染：opacity 极低即可，勿移出屏幕，否则 PDF 空白
+  const host = document.createElement('div')
+  host.setAttribute('data-pdf-export-host', '1')
+  host.style.cssText = [
+    'position:fixed',
+    'left:0',
+    'top:0',
+    'width:760px',
+    'z-index:2147483646',
+    'opacity:0.01',
+    'pointer-events:none',
+    'overflow:visible',
+    'background:#ffffff'
+  ].join(';')
+
+  const root = document.createElement('div')
+  root.className = 'pdf-root'
+  root.style.cssText =
+    'width:760px;background:#ffffff;color:#0F172A;' +
+    'font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;line-height:1.75;padding:8px;'
+
+  root.innerHTML = `
     <style>
-      .pdf-root h1.main { font-size:24px; margin:0 0 6px; color:#1d1d1f; }
-      .pdf-root .meta { color:#6e6e73; font-size:12.5px; }
+      .pdf-root h1.main { font-size:24px; margin:0 0 6px; color:#0F172A; }
+      .pdf-root .meta { color:#64748B; font-size:12.5px; }
       .pdf-root header { border-bottom:2px solid ${accent}; padding-bottom:14px; margin-bottom:18px; }
       .pdf-root .badge { display:inline-block; color:#fff; padding:2px 10px; border-radius:12px; font-size:12px; margin-left:8px; }
       .pdf-root .cards { display:flex; gap:16px; margin:16px 0; }
-      .pdf-root .card { flex:1; border:1px solid #e1e1e4; border-radius:10px; padding:12px; }
-      .pdf-root .card h3 { margin:0 0 8px; font-size:14px; color:#48484a; }
+      .pdf-root .card { flex:1; border:1px solid #E2E8F0; border-radius:10px; padding:12px; background:#F8FAFC; }
+      .pdf-root .card h3 { margin:0 0 8px; font-size:14px; color:#475569; }
       .pdf-root .chart { width:100%; height:230px; }
-      .pdf-root h2 { font-size:17px; margin:18px 0 8px; color:#1d1d1f; border-left:4px solid ${accent}; padding-left:10px; }
+      .pdf-root h2 { font-size:17px; margin:18px 0 8px; color:#0F172A; border-left:4px solid ${accent}; padding-left:10px; }
       .pdf-root ul, .pdf-root ol { padding-left:22px; margin:6px 0; }
-      .pdf-root blockquote { margin:10px 0; padding:8px 14px; border-left:3px solid ${accent}; background:#f5f5f7; color:#48484a; }
+      .pdf-root blockquote { margin:10px 0; padding:8px 14px; border-left:3px solid ${accent}; background:#F8FAFC; color:#475569; }
       .pdf-root sup.cite { color:${accent}; font-size:11px; }
-      .pdf-root .ir-toc { border:1px solid #e1e1e4; border-radius:10px; padding:12px 16px; margin:14px 0; }
-      .pdf-root .ir-toc .toc-title { font-weight:700; margin-bottom:6px; color:#48484a; }
+      .pdf-root .ir-toc { border:1px solid #E2E8F0; border-radius:10px; padding:12px 16px; margin:14px 0; }
+      .pdf-root .ir-toc .toc-title { font-weight:700; margin-bottom:6px; color:#475569; }
       .pdf-root .ir-toc a { color:${accent}; text-decoration:none; }
       .pdf-root .ir-section { page-break-inside:avoid; }
       .pdf-root .sources li { margin-bottom:5px; font-size:13px; list-style:none; }
       .pdf-root .sources { padding-left:0; }
       .pdf-root .sources .idx { color:${accent}; margin-right:4px; }
-      .pdf-root .dim { color:#a1a1a6; font-size:12px; }
-      .pdf-root footer { margin-top:26px; color:#a1a1a6; font-size:12px; text-align:center; }
+      .pdf-root .dim { color:#94A3B8; font-size:12px; }
+      .pdf-root footer { margin-top:26px; color:#94A3B8; font-size:12px; text-align:center; }
     </style>
-    <div class="pdf-root">
-      <header>
-        <h1 class="main">${escapeHtml(templateName)}：${escapeHtml(keyword || '')} ${riskBadge}</h1>
-        <div class="meta">生成时间：${generatedAt} ｜ 由 AgentMind 多智能体系统自动生成</div>
-      </header>
-      <div class="cards">
-        <div class="card"><h3>情感分布</h3><div id="pdf-pie" class="chart"></div></div>
-        <div class="card"><h3>关键词热度 Top</h3><div id="pdf-bar" class="chart"></div></div>
-      </div>
-      ${irToTocHtml(ir)}
-      <div class="report">${irToContentHtml(ir)}</div>
-      <h2>信息来源</h2>
-      <ul class="sources">${sourcesHtml}</ul>
-      <footer>AgentMind · AI 多智能体舆情分析系统</footer>
-    </div>`
+    <header>
+      <h1 class="main">${escapeHtml(templateName)}：${escapeHtml(keyword || '')} ${riskBadge}</h1>
+      <div class="meta">生成时间：${generatedAt} ｜ 由 AgentMind 多智能体系统自动生成</div>
+    </header>
+    <div class="cards">
+      <div class="card"><h3>情感分布</h3><div class="chart pdf-pie"></div></div>
+      <div class="card"><h3>关键词热度 Top</h3><div class="chart pdf-bar"></div></div>
+    </div>
+    ${irToTocHtml(ir)}
+    <div class="report">${irToContentHtml(ir)}</div>
+    <h2>信息来源</h2>
+    <ul class="sources">${sourcesHtml}</ul>
+    <footer>AgentMind · AI 多智能体舆情分析系统</footer>`
 
-  document.body.appendChild(container)
+  host.appendChild(root)
+  document.body.appendChild(host)
 
-  const pieEl = container.querySelector('#pdf-pie')
-  const barEl = container.querySelector('#pdf-bar')
-  const pie = echarts.init(pieEl, null, { renderer: 'canvas' })
-  const bar = echarts.init(barEl, null, { renderer: 'canvas' })
+  const pieEl = root.querySelector('.pdf-pie')
+  const barEl = root.querySelector('.pdf-bar')
+  const pie = echarts.init(pieEl, null, { renderer: 'canvas', width: 340, height: 230 })
+  const bar = echarts.init(barEl, null, { renderer: 'canvas', width: 360, height: 230 })
 
-  // 关闭动画，确保截图时图表已完整渲染
   pie.setOption({
     animation: false,
     tooltip: { show: false },
-    legend: { bottom: 0, textStyle: { color: '#6e6e73' }, icon: 'circle' },
+    legend: {
+      orient: 'vertical',
+      right: 8,
+      top: 'center',
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: '#64748B', fontSize: 11 }
+    },
     series: [
       {
         type: 'pie',
-        radius: ['42%', '68%'],
-        center: ['50%', '44%'],
-        itemStyle: { borderColor: '#fff', borderWidth: 3 },
-        label: { color: '#1d1d1f', formatter: '{b}\n{d}%' },
+        radius: ['55%', '75%'],
+        center: ['35%', '50%'],
+        itemStyle: { borderColor: '#F8FAFC', borderWidth: 2, borderRadius: 4 },
+        label: { show: false },
+        labelLine: { show: false },
         data: [
-          { value: s.positive, name: '正面', itemStyle: { color: '#34c759' } },
-          { value: s.negative, name: '负面', itemStyle: { color: '#ff3b30' } },
-          { value: s.neutral, name: '中性', itemStyle: { color: '#007aff' } }
+          { value: s.positive, name: '正面', itemStyle: { color: '#10B981' } },
+          { value: s.neutral, name: '中性', itemStyle: { color: '#94A3B8' } },
+          { value: s.negative, name: '负面', itemStyle: { color: '#2563EB' } }
         ]
       }
     ]
@@ -130,33 +152,74 @@ export async function downloadReportPdf(result) {
   bar.setOption({
     animation: false,
     tooltip: { show: false },
-    grid: { left: 80, right: 20, top: 10, bottom: 20 },
-    xAxis: { type: 'value', axisLabel: { color: '#6e6e73' }, splitLine: { lineStyle: { color: '#e1e1e4' } } },
-    yAxis: { type: 'category', data: topKw.map((k) => k.word), axisLabel: { color: '#1d1d1f' } },
-    series: [{ type: 'bar', data: topKw.map((k) => k.weight || 0), itemStyle: { color: '#007aff', borderRadius: [0, 4, 4, 0] } }]
+    grid: { left: '3%', right: '8%', bottom: '3%', top: '8%', containLabel: true },
+    xAxis: {
+      type: 'value',
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: '#64748B', fontSize: 11 },
+      splitLine: { lineStyle: { color: '#E2E8F0', type: 'dashed' } }
+    },
+    yAxis: {
+      type: 'category',
+      data: topKw.map((k) => k.word),
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: '#94A3B8', fontSize: 11 }
+    },
+    series: [
+      {
+        type: 'bar',
+        barWidth: 10,
+        data: topKw.map((k) => k.weight || 0),
+        itemStyle: {
+          borderRadius: [0, 2, 2, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+            { offset: 0, color: 'rgba(14,165,233,0.25)' },
+            { offset: 1, color: '#0EA5E9' }
+          ])
+        }
+      }
+    ]
   })
 
-  const kw = (keyword || 'report').replace(/[\\/:*?"<>|]/g, '_')
+  const kw = String(keyword || 'report').replace(/[\\/:*?"<>|]/g, '_')
   const filename = `舆情报告_${kw}_${Date.now()}.pdf`
 
   try {
-    // 等待两帧让 ECharts 完成 canvas 绘制
-    await nextFrame()
+    // 等布局 + canvas 绘制完成
+    await wait(350)
 
     await html2pdf()
       .set({
-        margin: [10, 10, 12, 10], // mm，上右下左
+        margin: [10, 10, 12, 10],
         filename,
         image: { type: 'jpeg', quality: 0.96 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: 760,
+          // 捕获时按元素实际尺寸，避免视口裁切
+          onclone: (_doc, el) => {
+            el.style.opacity = '1'
+          }
+        },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['css', 'legacy'] }
       })
-      .from(container)
+      .from(root)
       .save()
   } finally {
-    pie.dispose()
-    bar.dispose()
-    container.remove()
+    try {
+      pie.dispose()
+      bar.dispose()
+    } catch {
+      /* ignore */
+    }
+    host.remove()
   }
 }

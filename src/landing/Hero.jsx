@@ -360,8 +360,8 @@ export default function Hero({ onStartAnalyze }) {
           >
             {[
               { label: '关键词', hint: '1-20字' },
-              { label: '自然语言', hint: '一句话描述' },
-              { label: '粘贴文本', hint: '直接上传' },
+              { label: '自然语言', hint: '报告后追问' },
+              { label: '文本上传', hint: '上传文件' },
             ].map((mode, i) => (
               <div
                 key={mode.label}
@@ -503,6 +503,7 @@ export default function Hero({ onStartAnalyze }) {
                       gap: 10,
                       transition: 'all 0.3s ease',
                       transform: isActive ? 'translateY(-4px)' : 'translateY(0)',
+                      background:'white',
                     }}
                   >
                     {/* Node circle */}

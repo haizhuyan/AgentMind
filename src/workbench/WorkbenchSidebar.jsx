@@ -73,7 +73,7 @@ export default function WorkbenchSidebar({
                     className={`history-item ${activeRecordId === r.id ? 'active' : ''}`}
                     onClick={() => onOpenRecord(r.id)}
                     disabled={loading}
-                    title={r.status === 'completed' ? '点击回看完整内容' : '点击继续未完成的流程'}
+                    title={r.status === 'completed' ? '点击回看完整内容' : '点击查看；未完成需手动继续分析'}
                   >
                     <svg className="history-icon" viewBox="0 0 24 24" fill="none">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>

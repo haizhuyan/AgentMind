@@ -3,7 +3,10 @@ import { AGENT_STEPS } from '../services/agentOrchestrator.js'
 import { ENABLE_DEBATE } from '../config.js'
 import { renderDetail } from '../components/agentDetail.jsx'
 import ReportPanel from '../components/ReportPanel.jsx'
-import { buildFlowHtml, downloadTextFile, safeName } from '../utils/flowExport.js'
+import {
+  downloadFlowHtml,
+  downloadFlowMarkdown
+} from '../utils/flowExport.js'
 
 /**
  * WorkbenchMessages —— 对话消息流
@@ -21,10 +24,15 @@ export default function WorkbenchMessages({
   record,
   streamReport,
   thinking,
+  chatMessages = [],
+  chatLoading = false,
   error,
   onAsk,
   onCopyReport,
   onExportHtml,
+  onExportPdf,
+  onExportMd,
+  onRetry,
   hotList,
   hotError,
   hotLoading,
@@ -33,7 +41,9 @@ export default function WorkbenchMessages({
 }) {
   const steps = ENABLE_DEBATE ? AGENT_STEPS : AGENT_STEPS.filter((s) => s.id !== 'debate')
   const data = record?.result || result
-  const hasConversation = loading || data || record?.step_state
+  const hasLiveSteps = Object.keys(statuses || {}).length > 0
+  const hasConversation =
+    loading || data || record?.step_state || hasLiveSteps || Boolean(error) || chatMessages.length > 0 || chatLoading
   const userName = user?.username || '分析师'
   const [open, setOpen] = useState({})
   const [elapsed, setElapsed] = useState(0)
@@ -47,7 +57,8 @@ export default function WorkbenchMessages({
   }, [loading])
 
   function toggleStep(id) {
-    setOpen((prev) => ({ ...prev, [id]: !prev[id] }))
+    // 默认展开：未写入 open[id] 时视为 true；切换时显式写成 true/false
+    setOpen((prev) => ({ ...prev, [id]: prev[id] === false }))
   }
 
   // 空态：热搜榜单
@@ -92,8 +103,8 @@ export default function WorkbenchMessages({
               )}
             </div>
             <p className="welcome-subtitle" style={{ marginTop: 32, marginBottom: 0 }}>
-              点击热点一键分析，或在下方输入关键词、一句话需求、粘贴舆情文本，
-              六个 AI 智能体将自动完成全流程。
+              点击热点一键分析，或在下方输入关键词 / 一句话需求；
+              长文本请上传文件。报告生成后可就同一报告继续追问。
             </p>
           </div>
         </div>
@@ -127,7 +138,7 @@ export default function WorkbenchMessages({
         </div>
 
         {/* 流水线卡：六步时间线，每步可展开查看中间产物 */}
-        {(loading || data || record?.step_state) && (
+        {(loading || data || record?.step_state || hasLiveSteps) && (
           <div className="message assistant">
             <div className="message-avatar">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -187,7 +198,7 @@ export default function WorkbenchMessages({
           </div>
         )}
 
-        {/* 错误消息 */}
+        {/* 错误消息 + 手动继续 */}
         {error && (
           <div className="message assistant message-error">
             <div className="message-avatar">⚠</div>
@@ -196,7 +207,14 @@ export default function WorkbenchMessages({
                 <span className="message-name">AgentMind</span>
                 <span className="message-time">{timeStr}</span>
               </div>
-              <div className="message-content">{error}</div>
+              <div className="message-content">
+                <div>{error}</div>
+                {!loading && onRetry && (
+                  <button type="button" className="retry-btn" onClick={onRetry}>
+                    继续分析
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -234,12 +252,13 @@ export default function WorkbenchMessages({
                           复制
                         </button>
                         <button className="result-action-btn" onClick={onExportHtml} title="导出 HTML">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            <polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
                           HTML
+                        </button>
+                        <button className="result-action-btn" onClick={onExportPdf} title="导出 PDF">
+                          PDF
+                        </button>
+                        <button className="result-action-btn" onClick={onExportMd} title="导出 Markdown">
+                          MD
                         </button>
                       </div>
                     </div>
@@ -292,6 +311,46 @@ export default function WorkbenchMessages({
             </div>
           </div>
         )}
+
+        {/* 报告完成后的追问对话 */}
+        {chatMessages.map((m) => (
+          <div key={m.id} className={`message ${m.role === 'user' ? 'user' : 'assistant'}`}>
+            <div className="message-avatar">
+              {m.role === 'user' ? (
+                userName.slice(0, 1).toUpperCase()
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </div>
+            <div className="message-body">
+              <div className="message-header">
+                <span className="message-name">{m.role === 'user' ? userName : 'AgentMind'}</span>
+                <span className="message-time">追问</span>
+              </div>
+              <div className="message-content chat-followup">{m.content}</div>
+            </div>
+          </div>
+        ))}
+        {chatLoading && (
+          <div className="message assistant">
+            <div className="message-avatar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div className="message-body">
+              <div className="message-header">
+                <span className="message-name">AgentMind</span>
+                <span className="message-time">追问</span>
+              </div>
+              <div className="message-content chat-followup chat-followup-loading">
+                <span className="spinner" /> 正在根据报告内容回答…
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -304,7 +363,7 @@ export default function WorkbenchMessages({
   }
 }
 
-/* ===== 六步流水线时间线（每步可展开中间产物） ===== */
+/* ===== 六步流水线时间线（每步可展开中间产物，默认全部展开） ===== */
 function PipelineCard({ steps, statuses, loading, record, elapsed, open, onToggle, keyword }) {
   function stepStateOf(stepId) {
     if (record) {
@@ -320,15 +379,23 @@ function PipelineCard({ steps, statuses, loading, record, elapsed, open, onToggl
   const doneCount = states.filter((s) => s.status === 'done').length
   const isAllDone = doneCount === steps.length
 
-  // 流水线产物导出 HTML（含各步骤真实中间产物）
-  function exportFlowHtml() {
+  function collectExportStatuses() {
     const exportStatuses = {}
     steps.forEach((s) => {
       const st = stepStateOf(s.id)
       exportStatuses[s.id] = { status: st.status, detail: st.detail }
     })
-    const html = buildFlowHtml(exportStatuses, { keyword: keyword || '舆情分析' })
-    downloadTextFile(html, `多智能体协作流程产物_${safeName(keyword || 'flow')}.html`, 'text/html;charset=utf-8')
+    return exportStatuses
+  }
+
+  const meta = { keyword: keyword || '舆情分析' }
+
+  function exportFlowHtml() {
+    downloadFlowHtml(collectExportStatuses(), meta)
+  }
+
+  function exportFlowMd() {
+    downloadFlowMarkdown(collectExportStatuses(), meta)
   }
 
   return (
@@ -338,7 +405,7 @@ function PipelineCard({ steps, statuses, loading, record, elapsed, open, onToggl
           {!isAllDone && <span className="pulse"></span>}
           {isAllDone ? '智能体流水线' : '智能体流水线 · 实时运行'}
         </div>
-        <div className="pipeline-status" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="pipeline-status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>
             {isAllDone ? `${doneCount}/${steps.length} 完成` : `${doneCount}/${steps.length} 完成${loading ? ` · 已耗时 ${elapsed}s` : ''}`}
           </span>
@@ -346,22 +413,27 @@ function PipelineCard({ steps, statuses, loading, record, elapsed, open, onToggl
             type="button"
             className="result-action-btn"
             onClick={exportFlowHtml}
-            title="导出流水线中间产物为 HTML"
+            title="导出流水线 HTML"
             disabled={doneCount === 0}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            导出 HTML
+            HTML
+          </button>
+          <button
+            type="button"
+            className="result-action-btn"
+            onClick={exportFlowMd}
+            title="导出流水线 Markdown"
+            disabled={doneCount === 0}
+          >
+            MD
           </button>
         </div>
       </div>
       <div className="agent-steps">
         {states.map(({ step, status, detail }) => {
           const hasDetail = Boolean(detail) && status !== 'idle'
-          const expanded = open[step.id] ?? status === 'running'
+          // 默认展开：仅当 open[id] === false 时收起
+          const expanded = hasDetail && open[step.id] !== false
           return (
             <div key={step.id} className={`agent-step ${status}`}>
               <div className="agent-step-icon">{StepIcon(step.id)}</div>
@@ -411,7 +483,7 @@ function tagLabel(status) {
 function outputText(stepId, status, d) {
   if (status === 'pending') return '等待执行'
   if (status === 'running') return stepId === 'analyze' ? '多模型并行情感分析中…' : '执行中…'
-  if (status === 'failed') return '执行失败，可点击历史记录继续'
+  if (status === 'failed') return '执行失败，可点击下方「继续分析」重试'
   if (!d) return '已完成'
   switch (stepId) {
     case 'collect':
@@ -427,7 +499,7 @@ function outputText(stepId, status, d) {
     case 'debate':
       return `${(d.rounds || []).length ? (d.rounds || []).length + '轮辩论' : '交叉验证'} · 一致度 ${d.agreement ?? '—'}% · 共识/分歧已标注`
     case 'report':
-      return `报告已生成 · ${d.length}字 · 支持 HTML/PDF/Markdown 导出`
+      return `报告已生成 · ${d.length}字 · 支持 HTML / PDF / Markdown 导出`
     default:
       return '已完成'
   }

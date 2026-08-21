@@ -3,7 +3,9 @@ import WorkbenchSidebar from './WorkbenchSidebar.jsx'
 import WorkbenchMessages from './WorkbenchMessages.jsx'
 import WorkbenchInput from './WorkbenchInput.jsx'
 import { fetchHotList } from '../services/hotlistService.js'
-import { buildHtmlReport } from '../utils/htmlReport.js'
+import { downloadHtmlReport } from '../utils/htmlReport.js'
+import { downloadReportPdf } from '../utils/pdfExport.js'
+import { downloadMarkdownReport } from '../utils/mdExport.js'
 import './workbench.css'
 
 /**
@@ -20,6 +22,8 @@ export default function Workbench({
   viewRecord,
   streamReport,
   thinking,
+  chatMessages = [],
+  chatLoading = false,
   error,
   activeKeyword,
   records,
@@ -43,7 +47,9 @@ export default function Workbench({
   onToggleDemo,
   onLoginStatusClick,
   onAnalyze,
+  onChat,
   onStop,
+  onRetry,
   onHome,
   onLogout,
   notice,
@@ -81,10 +87,11 @@ export default function Workbench({
   }, [])
 
   const data = viewRecord?.result || result
+  const hasReport = Boolean(data?.report)
   const title = viewRecord?.keyword || result?.keyword || activeKeyword || '新建分析'
   const updatedAgo = lastUpdated ? Math.max(1, Math.round((now - lastUpdated) / 60000)) : 0
 
-  // 顶栏操作：分享（复制）/ 导出（HTML）/ 更多
+  // 顶栏 / 报告卡：复制 + HTML / PDF / Markdown 导出
   async function handleShare() {
     if (!data?.report) return
     try {
@@ -96,17 +103,21 @@ export default function Workbench({
 
   function handleExportHtml() {
     if (!data) return
-    const html = buildHtmlReport(data)
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    const kw = (data.keyword || 'report').replace(/[\\/:*?"<>|]/g, '_')
-    a.href = url
-    a.download = `舆情报告_${kw}_${Date.now()}.html`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    downloadHtmlReport(data)
+  }
+
+  async function handleExportPdf() {
+    if (!data) return
+    try {
+      await downloadReportPdf(data)
+    } catch (err) {
+      alert(`PDF 导出失败：${err?.message || '未知错误'}`)
+    }
+  }
+
+  function handleExportMd() {
+    if (!data) return
+    downloadMarkdownReport(data)
   }
 
   return (
@@ -170,13 +181,6 @@ export default function Workbench({
                 <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
             </button>
-            <button className="icon-btn" title="导出 HTML 报告" onClick={handleExportHtml} disabled={!data}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
           </div>
         </div>
 
@@ -201,10 +205,15 @@ export default function Workbench({
             record={viewRecord}
             streamReport={streamReport}
             thinking={thinking}
+            chatMessages={chatMessages}
+            chatLoading={chatLoading}
             error={error}
             onAsk={onPickKeyword}
             onCopyReport={handleShare}
             onExportHtml={handleExportHtml}
+            onExportPdf={handleExportPdf}
+            onExportMd={handleExportMd}
+            onRetry={onRetry}
             hotList={hotList}
             hotError={hotError}
             hotLoading={hotLoading}
@@ -215,7 +224,10 @@ export default function Workbench({
           {/* 输入区 */}
           <WorkbenchInput
             loading={loading}
+            chatLoading={chatLoading}
+            hasReport={hasReport}
             onAnalyze={onAnalyze}
+            onChat={onChat}
             onStop={onStop}
             models={models}
             primaryId={primaryId}

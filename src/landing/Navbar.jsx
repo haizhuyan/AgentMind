@@ -205,17 +205,13 @@ export default function Navbar({ user, onLoginClick, onDemo, onEnterWorkspace })
                 </a>
                 <a
                   href="#cta"
-                  className="btn btn-primary btn-sm"
-                  style={{ fontSize: 13 }}
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: 13, color: 'var(--ink-400)' }}
                   onClick={(e) => {
                     e.preventDefault()
                     onDemo?.()
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-                    <path d="M5 12L19 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <path d="M13 6L19 12L13 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
                   离线演示
                 </a>
               </>
@@ -275,8 +271,8 @@ export default function Navbar({ user, onLoginClick, onDemo, onEnterWorkspace })
           ))}
           <a
             href="#cta"
-            className="btn btn-primary btn-lg"
-            style={{ width: '100%', marginTop: 16 }}
+            className="btn btn-ghost btn-lg"
+            style={{ width: '100%', marginTop: 16, color: 'var(--ink-400)', border: '1px solid var(--border)' }}
             onClick={(e) => {
               e.preventDefault()
               setMobileOpen(false)

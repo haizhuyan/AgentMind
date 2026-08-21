@@ -625,6 +625,10 @@ export async function demoLLM({ system = '', user = '', model, signal } = {}) {
     const round = user.includes('主持人引导') ? 2 : 1
     return featured ? pdCritic(model, round) : fakeCritic(round)
   }
+  if (system.includes('报告追问') || system.includes('舆情分析助手')) {
+    const q = (user.match(/【本轮用户问题】\s*([\s\S]*)$/) || [])[1]?.trim() || '该问题'
+    return `结合当前报告：关于「${q}」，报告显示整体舆情需持续关注负面传播节点；建议优先核查高热渠道与核心诉求，再制定分层应对。若需换题分析，请使用「新建分析」。`
+  }
   // 兜底：返回一个通用 JSON，避免上层解析异常
   return JSON.stringify({ note: '离线演示占位返回' })
 }

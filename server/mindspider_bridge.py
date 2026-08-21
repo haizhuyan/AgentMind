@@ -32,6 +32,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -224,16 +225,15 @@ def _force_json_save_option():
             kwargs.setdefault("encoding", "utf-8")
             kwargs.setdefault("errors", "replace")
         result = _orig_run(cmd, **kwargs)
-        if getattr(result, "returncode", 0) != 0:
-            tail = ""
-            for stream in (getattr(result, "stderr", None), getattr(result, "stdout", None)):
-                if stream:
-                    tail = str(stream).strip()[-1500:]
-                    if tail:
-                        break
-            _LAST_CRAWL_LOG = tail
-        else:
-            _LAST_CRAWL_LOG = ""
+        # 无论成败都保留尾部日志（成功但 0 条时也要能诊断登录失败）
+        tail = ""
+        for stream in (getattr(result, "stderr", None), getattr(result, "stdout", None)):
+            if stream:
+                t = str(stream).strip()
+                if t:
+                    tail = t[-2000:]
+                    break
+        _LAST_CRAWL_LOG = tail
         return result
 
     _sp.run = _patched_run
@@ -242,13 +242,26 @@ def _force_json_save_option():
 
     def _wrapped_crawl(self, platform, keywords, login_type="qrcode", max_notes=50):
         result = _orig_crawl(self, platform, keywords, login_type=login_type, max_notes=max_notes)
+        log = _LAST_CRAWL_LOG or ""
+        login_fail = bool(
+            re.search(
+                r"have not found qrcode|Login .* failed|login failed|Begin login.*qrcode",
+                log,
+                re.I,
+            )
+        ) and bool(
+            re.search(r"have not found qrcode|Login .* failed by qrcode|login failed", log, re.I)
+        )
+        if result.get("success") and login_fail:
+            result["success"] = False
+            result["error"] = "登录失败（无头模式找不到二维码或扫码超时）"
         if not result.get("success"):
             err = result.get("error")
             if not err:
                 code = result.get("return_code")
                 err = f"MediaCrawler 退出码 {code}" if code is not None else "未知错误"
-            if _LAST_CRAWL_LOG:
-                err = f"{err} | {_LAST_CRAWL_LOG}"
+            if log:
+                err = f"{err} | {log[-1200:]}"
             result["error"] = err
         return result
 
@@ -432,9 +445,12 @@ def run_crawl(platform: str, keyword: str, max_notes: int = 20):
             )
         raise RuntimeError(
             f"爬取进程结束但未产生数据文件（平台 {platform}，关键词「{keyword}」）。"
-            "常见原因：未登录/登录失效、搜索 0 条、被风控。"
-            "请用扫码模式重新登录，或换短关键词（如「延迟退休」）再试。"
+            "最常见原因：未在扫码模式完成微博登录（无头模式找不到二维码会「假成功」）。"
+            "请执行：docker-compose -f docker-compose.yml -f docker-compose.qr.yml up -d，"
+            "打开 http://服务器公网IP:6080/vnc.html → Connect，"
+            "再在网站跑一次爬虫并在 VNC 桌面里扫码。"
             f" data 目录：{tree}"
+            + (f" | 日志：{_LAST_CRAWL_LOG[-800:]}" if _LAST_CRAWL_LOG else "")
         )
     return parsed
 

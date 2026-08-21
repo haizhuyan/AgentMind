@@ -3,6 +3,7 @@
 
 1. Remove channel=\"chrome\" (image has Chromium, not Google Chrome).
 2. Inject --no-sandbox args into Playwright launch / launch_persistent_context.
+3. sys.exit() without code → sys.exit(1) (QR 失败时原先会「假成功」).
 """
 from __future__ import annotations
 
@@ -28,6 +29,8 @@ def _is_launch_call(line: str) -> bool:
 def patch_text(text: str) -> str:
     text = re.sub(r",[ \t]*channel\s*=\s*\"chrome\"", "", text)
     text = re.sub(r"channel\s*=\s*\"chrome\"[ \t]*,[ \t]*", "", text)
+    # Bare sys.exit() exits 0 and fools our bridge into thinking crawl succeeded.
+    text = re.sub(r"\bsys\.exit\(\s*\)", "sys.exit(1)", text)
 
     lines = text.splitlines(keepends=True)
     out: list[str] = []
@@ -42,7 +45,6 @@ def patch_text(text: str) -> str:
             saw_args = "args=" in line
             depth = line.count("(") - line.count(")")
             if depth <= 0:
-                # Single-line call: inject before the closing paren, then leave.
                 if not saw_args and ")" in line:
                     line = re.sub(r"\)\s*$", f", {ARGS})", line.rstrip("\n")) + (
                         "\n" if line.endswith("\n") else ""
@@ -81,7 +83,6 @@ def main() -> None:
         original = path.read_text(encoding="utf-8")
         updated = patch_text(original)
         if updated != original:
-            # Fail fast if we introduced a syntax error
             compile(updated, str(path), "exec")
             path.write_text(updated, encoding="utf-8")
             changed += 1

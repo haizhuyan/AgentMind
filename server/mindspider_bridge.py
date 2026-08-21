@@ -33,7 +33,9 @@ import asyncio
 import json
 import os
 import re
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 # AgentMind 项目根目录（server/ 的上一级）
@@ -387,6 +389,80 @@ def _parse_crawl_json(payload, keyword: str = None) -> dict:
     return {"texts": texts, "sources": sources}
 
 
+def _chromium_browser_data_root() -> Path:
+    return (
+        MINDSPIDER_ROOT
+        / "DeepSentimentCrawling"
+        / "MediaCrawler"
+        / "browser_data"
+    )
+
+
+def _release_chromium_profile_lock(platform=None):
+    """释放 Chromium 用户目录锁。
+
+    上次爬取异常退出 / 容器重启后，browser_data 里会留下 SingletonLock，
+    新进程会报 profile in use by another Chromium process。
+    """
+    # 先结束残留浏览器，再删锁文件（只杀锁着 profile 的 Chromium）
+    if sys.platform != "win32":
+        for pat in (
+            "chrome",
+            "chromium",
+            "Chromium",
+            "chrome-for-testing",
+            "Google Chrome for Testing",
+        ):
+            try:
+                subprocess.run(
+                    ["pkill", "-f", pat],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except FileNotFoundError:
+                break
+        time.sleep(0.8)
+
+    root = _chromium_browser_data_root()
+    if not root.exists():
+        return
+
+    lock_names = (
+        "SingletonLock",
+        "SingletonCookie",
+        "SingletonSocket",
+        "lockfile",
+        ".org.chromium.Chromium.lockfile",
+    )
+    dirs = []
+    if platform:
+        dirs.append(root / f"{platform}_user_data_dir")
+    else:
+        dirs.extend(sorted(root.glob("*_user_data_dir")))
+
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        for name in lock_names:
+            p = d / name
+            try:
+                if p.is_symlink() or p.is_file():
+                    p.unlink(missing_ok=True)
+                elif p.is_dir():
+                    # 偶发成目录时忽略
+                    pass
+            except OSError:
+                pass
+        # DevToolsActivePort 残留也会干扰 CDP
+        for name in ("DevToolsActivePort",):
+            p = d / name
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 def _patch_weibo_login_for_qr() -> None:
     """微博旧登录页（entry=miniblog）常只显示账密；换成带二维码的 SSO 页。"""
     login_py = (
@@ -435,6 +511,9 @@ def run_crawl(platform: str, keyword: str, max_notes: int = 20):
     if not platform:
         raise RuntimeError("不支持的平台：支持 weibo/xhs/dy/ks/bili/tieba/zhihu")
 
+    # 每次爬取前清掉残留 Chromium 进程与 profile 锁，避免 “profile in use”
+    _release_chromium_profile_lock(platform)
+
     try:
         from DeepSentimentCrawling.platform_crawler import PlatformCrawler
     except Exception as e:
@@ -455,6 +534,11 @@ def run_crawl(platform: str, keyword: str, max_notes: int = 20):
             "首次使用请：docker-compose -f docker-compose.yml -f docker-compose.qr.yml up -d，"
             "打开 http://服务器IP:6080/vnc.html 扫码。"
         )
+        if "profile appears to be in use" in detail or "SingletonLock" in detail:
+            hint = (
+                "浏览器用户目录仍被占用：可 docker-compose restart 后重试；"
+                "或手动删除 volume 内 browser_data/*/SingletonLock（勿删整个目录以免掉登录）。"
+            )
         raise RuntimeError(f"MindSpider 爬取失败（{platform}）：{detail}。{hint}")
 
     # 读取 MediaCrawler 的 json / jsonl 输出
